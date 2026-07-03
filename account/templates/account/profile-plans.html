@@ -1,0 +1,32 @@
+{% extends 'account/_shell.html' %}
+{% load my_tags %}
+{% load i18n %}
+
+{% block title %}{% blocktrans %}برنامه‌های من | ایگوفیت{% endblocktrans %}{% endblock %}
+
+{% block account_content %}
+<section class="profile-screen profile-screen--wide">
+    <header class="profile-screen__header">
+        <h2 class="profile-screen__title">{% trans 'برنامه‌های من' %}</h2>
+    </header>
+
+    <section class="course-library-grid">
+        {% for document in documents %}
+            <article class="account-card">
+                <div class="mt-4 grid gap-3">
+                    <h2 class="text-xl font-black">{{ document.title }}</h2>
+                    <p class="text-sm text-slate-500">{% blocktrans with uploaded_at=document.uploaded_at|date:"Y/m/d" %}ارسال‌شده در {{ uploaded_at }}{% endblocktrans %}{% if document.uploaded_by %} {% blocktrans with uploader=document.uploaded_by.display_name|default:document.uploaded_by.fullname %}توسط {{ uploader }}{% endblocktrans %}{% endif %}</p>
+                    <a href="{{ document.file|public_media_url }}" class="cta-primary" download>{% trans 'دانلود فایل' %}</a>
+                </div>
+            </article>
+        {% empty %}
+            <section class="account-card col-span-full">
+                <div class="empty-state">
+                    <h3>{% trans 'هنوز برنامه‌ای برای شما ارسال نشده است' %}</h3>
+                    <p>{% trans 'وقتی مربی برنامه تمرینی یا غذایی برای شما ارسال کند، اینجا نمایش داده می‌شود.' %}</p>
+                </div>
+            </section>
+        {% endfor %}
+    </section>
+</section>
+{% endblock %}

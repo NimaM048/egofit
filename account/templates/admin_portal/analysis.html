@@ -1,0 +1,203 @@
+{% extends 'admin_portal/_shell.html' %}
+{% load i18n %}
+
+{% block title %}{% blocktrans %}{{ page_title }} | ایگوفیت{% endblocktrans %}{% endblock %}
+
+{% block admin_content %}
+<section class="analysis-screen admin-analysis-screen" data-analysis-root>
+    <header class="analysis-screen__header admin-screen__header">
+        <a href="{% url 'register:admin_search' %}" class="admin-back-link" aria-label="{% trans 'بازگشت' %}">→</a>
+        <h1 class="analysis-screen__title">{{ target_user.fullname }}</h1>
+    </header>
+
+    <section class="admin-data-preview">
+        <article>
+            <span>{% trans 'قد' %}</span>
+            <strong>{% if target_user.height_cm %}{{ target_user.height_cm }} cm{% else %}-{% endif %}</strong>
+        </article>
+        <article>
+            <span>{% trans 'وزن' %}</span>
+            <strong>{% if target_user.weight_kg %}{{ target_user.weight_kg }} kg{% else %}-{% endif %}</strong>
+        </article>
+        <article>
+            <span>{% trans 'فایل‌ها' %}</span>
+            <strong>{{ latest_media|length }}</strong>
+        </article>
+    </section>
+
+    <div class="analysis-desktop-grid">
+        <section class="analysis-panel analysis-panel--filters">
+            <form class="analysis-filters" method="get" data-analysis-filter-form>
+                <input type="hidden" name="metric" value="{{ analysis_selected_metric|default:'body_fat' }}" data-analysis-metric-input>
+                <button type="button" class="analysis-select" data-analysis-metric-toggle data-default-metric="{{ analysis_selected_metric|default:'body_fat' }}" data-default-label="{{ analysis_filter_label }}" aria-expanded="false">
+                    <span data-analysis-metric-label>{{ analysis_filter_label }}</span>
+                    <span aria-hidden="true">⌄</span>
+                </button>
+                <div class="analysis-metric-menu" data-analysis-metric-menu hidden>
+                    {% for option in analysis_metric_options %}
+                        <button type="button" class="analysis-metric-menu__item" data-analysis-metric="{{ option.key }}">{{ option.label }}</button>
+                    {% endfor %}
+                </div>
+                <div class="analysis-filters__row">
+                    <label class="analysis-filter-field">
+                        <span>{% trans 'تاریخ اندازه‌گیری محیط بدن' %}</span>
+                        <select name="circ_date" class="analysis-select analysis-select--native" data-analysis-auto-submit>
+                            {% if not analysis_circ_dates %}
+                                <option value="">{% trans 'داده‌ای ثبت نشده' %}</option>
+                            {% else %}
+                                {% for option in analysis_circ_dates %}
+                                    <option value="{{ option.value }}" {% if option.value == analysis_selected_circ_date %}selected{% endif %}>{{ option.label }}</option>
+                                {% endfor %}
+                            {% endif %}
+                        </select>
+                    </label>
+                    <label class="analysis-filter-field">
+                        <span>{% trans 'فرمول محاسبه درصد چربی' %}</span>
+                        <select name="body_fat_formula" class="analysis-select analysis-select--native" data-analysis-auto-submit>
+                            {% for option in analysis_body_fat_formulas %}
+                                <option value="{{ option.key }}" {% if option.key == analysis_selected_body_fat_formula %}selected{% endif %}>{{ option.label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                </div>
+            </form>
+
+            {% if analysis_has_data %}
+                {% if analysis_formula_used %}
+                    <p class="analysis-formula-badge">{% blocktrans with formula=analysis_formula_used %}فرمول: {{ formula }}{% endblocktrans %}</p>
+                {% endif %}
+                <article class="analysis-summary-card">
+                    <div class="analysis-summary-card__ring" style="--ring-progress: {{ analysis_summary.progress }}%;">
+                        <span>{{ analysis_summary.value }}</span>
+                    </div>
+                    <div class="analysis-summary-card__content">
+                        <strong>{{ analysis_summary.title }}</strong>
+                        <p>{{ analysis_summary.subtitle }}</p>
+                    </div>
+                </article>
+            {% endif %}
+        </section>
+
+        <section class="analysis-panel analysis-panel--results">
+            {% if analysis_has_data %}
+                {% if analysis_chart_has_data %}
+                <article class="analysis-chart-card" data-analysis-chart-card>
+                    <div class="analysis-chart-card__head">
+                        <strong>{% trans 'روند تغییرات' %}</strong>
+                        <span>{{ analysis_range_label }}</span>
+                    </div>
+                    <svg viewBox="0 0 320 160" class="analysis-chart-card__svg" aria-hidden="true">
+                        <defs>
+                            <linearGradient id="analysisLineAdmin" x1="0%" x2="0%" y1="0%" y2="100%">
+                                <stop offset="0%" stop-color="#3454d1" stop-opacity="0.55"/>
+                                <stop offset="100%" stop-color="#3454d1" stop-opacity="0"/>
+                            </linearGradient>
+                        </defs>
+                        <path d="{{ analysis_chart_area_path }}" fill="url(#analysisLineAdmin)" opacity="0.35"></path>
+                        <path d="{{ analysis_chart_path }}" fill="none" stroke="#3454d1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>
+                        {% for point in analysis_chart_points %}
+                            <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3.5" fill="#3454d1"></circle>
+                        {% endfor %}
+                    </svg>
+                </article>
+                {% else %}
+                <article class="analysis-empty analysis-empty--chart">
+                    <strong>{% trans 'داده کافی برای نمودار وجود ندارد' %}</strong>
+                    <p>{% trans 'برای نمایش روند تغییرات، حداقل ۲ اندازه‌گیری لازم است.' %}</p>
+                </article>
+                {% endif %}
+
+                {% if analysis_measurements.has_measurements %}
+                <section class="analysis-measurements">
+                    <div class="analysis-measurements__head">
+                        <strong>{% trans 'اندازه‌گیری‌های ثبت‌شده' %}</strong>
+                        {% if analysis_selected_circ_date %}
+                            <span>{{ analysis_selected_circ_date }}</span>
+                        {% else %}
+                            <span>{% trans 'آخرین رکورد' %}</span>
+                        {% endif %}
+                    </div>
+                    {% if analysis_measurements.circumference_rows %}
+                    <div class="analysis-measurements__group">
+                        <h3>{% trans 'محیط بدن' %}</h3>
+                        <div class="analysis-measurements__grid">
+                            {% for row in analysis_measurements.circumference_rows %}
+                                <article class="analysis-measurements__item">
+                                    <span>{{ row.label }}</span>
+                                    <strong>{{ row.value }}</strong>
+                                </article>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if analysis_measurements.caliper_rows %}
+                    <div class="analysis-measurements__group">
+                        <h3>{% trans 'کالیپر' %} — {{ analysis_selected_body_fat_formula_label }}</h3>
+                        <div class="analysis-measurements__grid">
+                            {% for row in analysis_measurements.caliper_rows %}
+                                <article class="analysis-measurements__item">
+                                    <span>{{ row.label }}</span>
+                                    <strong>{{ row.value }}</strong>
+                                </article>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </section>
+                {% endif %}
+
+                <section class="analysis-metrics">
+                    {% for metric in analysis_metrics %}
+                        <article class="analysis-metric-card">
+                            <div class="analysis-metric-card__top">
+                                <strong>{{ metric.value }}</strong>
+                                <span>{{ metric.label }}</span>
+                            </div>
+                            <div class="analysis-metric-card__bar">
+                                {% for zone in metric.zones %}
+                                    <span class="tone-{{ zone.tone }}" style="width: {{ zone.width }}%;"></span>
+                                {% endfor %}
+                                <i class="analysis-metric-card__marker" style="inset-inline-start: {{ metric.marker }}%;"></i>
+                            </div>
+                        </article>
+                    {% endfor %}
+                </section>
+
+                <a href="{% url 'register:admin_user_hub' target_user.id %}" class="admin-primary-btn">{% trans 'تایید' %}</a>
+            {% else %}
+                <article class="analysis-empty" data-analysis-empty>
+                    <strong>{% trans 'نتیجه‌ای یافت نشد.' %}</strong>
+                    <p>{% trans 'برای نمایش گزارش، اطلاعات پایه کاربر را ثبت کنید.' %}</p>
+                </article>
+                <a href="{% url 'register:admin_personal_info' target_user.id %}" class="admin-primary-btn">{% trans 'ثبت اطلاعات پایه' %}</a>
+            {% endif %}
+        </section>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+    {{ block.super }}
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            var form = document.querySelector("[data-analysis-filter-form]");
+            if (!form) {
+                return;
+            }
+            form.querySelectorAll("[data-analysis-auto-submit]").forEach(function (element) {
+                element.addEventListener("change", function () {
+                    form.submit();
+                });
+            });
+            form.querySelectorAll("[data-analysis-metric]").forEach(function (button) {
+                button.addEventListener("click", function () {
+                    var metricInput = form.querySelector("[data-analysis-metric-input]");
+                    if (metricInput) {
+                        metricInput.value = button.getAttribute("data-analysis-metric") || "body_fat";
+                    }
+                    form.submit();
+                });
+            });
+        });
+    </script>
+{% endblock %}

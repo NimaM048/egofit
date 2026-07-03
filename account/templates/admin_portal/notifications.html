@@ -1,0 +1,79 @@
+{% extends 'admin_portal/_shell.html' %}
+{% load i18n %}
+
+{% block title %}{% blocktrans %}اعلانات | ایگوفیت{% endblocktrans %}{% endblock %}
+
+{% block admin_content %}
+<section class="admin-screen admin-search-screen">
+    <header class="admin-screen__header">
+        <h1 class="admin-screen__title">{% trans 'اعلانات' %}</h1>
+    </header>
+
+    <section class="admin-recent-panel">
+        <h2>{% blocktrans with count=pending_coach_requests|length %}درخواست‌های از مربی ({{ count }}){% endblocktrans %}</h2>
+        <div class="admin-result-list">
+            {% for coach_request in pending_coach_requests %}
+                <article class="admin-result-card">
+                    <div class="admin-result-card__meta">
+                        <div>
+                            <strong>{{ coach_request.user.fullname }}</strong>
+                            <span>{{ coach_request.get_sessions_per_week_display }} —
+                                {% if coach_request.wants_diet %}{% trans 'برنامه غذایی' %}{% endif %}
+                                {% if coach_request.wants_workout %}{% trans 'برنامه تمرینی' %}{% endif %}
+                            </span>
+                        </div>
+                    </div>
+                    {% include 'admin_portal/_coach_request_detail.html' with coach_request=coach_request %}
+                    <div class="admin-result-card__actions">
+                        <a href="{% url 'register:admin_user_hub' coach_request.user.id %}" class="admin-secondary-btn admin-secondary-btn--small">{% trans 'مشاهده کاربر' %}</a>
+                        {% if coach_request.has_body_data and not coach_request.pushed_to_measurements %}
+                            <form method="post" action="{% url 'register:admin_coach_request_push' coach_request.pk %}">
+                                {% csrf_token %}
+                                <input type="hidden" name="next" value="{% url 'register:admin_notifications' %}">
+                                <button type="submit" class="admin-secondary-btn admin-secondary-btn--small">{% trans 'افزودن اندازه‌ها به اندازه‌گیری‌ها' %}</button>
+                            </form>
+                        {% elif coach_request.pushed_to_measurements %}
+                            <span class="coach-req-pushed">{% trans 'به اندازه‌گیری‌ها افزوده شد' %}</span>
+                        {% endif %}
+                        <form method="post" action="{% url 'register:admin_coach_request_handled' coach_request.pk %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{% url 'register:admin_notifications' %}">
+                            <button type="submit" class="admin-primary-btn admin-primary-btn--small">{% trans 'بررسی شد' %}</button>
+                        </form>
+                    </div>
+                </article>
+            {% empty %}
+                <article class="admin-empty admin-empty--center">
+                    <strong>{% trans 'درخواستی در انتظار بررسی نیست.' %}</strong>
+                </article>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="admin-recent-panel">
+        <h2>{% trans '🎉 تولد امروز' %}</h2>
+        <div class="admin-result-list">
+            {% for entry in birthday_users %}
+                <article class="admin-result-card">
+                    <div class="admin-result-card__meta">
+                        <div>
+                            <strong>{{ entry.user.display_name|default:entry.user.fullname }}</strong>
+                            <span dir="ltr">{{ entry.user.phone }}</span>
+                        </div>
+                    </div>
+                    <div class="admin-result-card__actions">
+                        {% if entry.sms_sent %}
+                            <span class="admin-secondary-btn admin-secondary-btn--small">{% trans 'پیامک ارسال شد ✓' %}</span>
+                        {% endif %}
+                        <a href="{% url 'register:admin_user_hub' entry.user.id %}" class="admin-primary-btn admin-primary-btn--small">{% trans 'مشاهده کاربر' %}</a>
+                    </div>
+                </article>
+            {% empty %}
+                <article class="admin-empty admin-empty--center">
+                    <strong>{% trans 'امروز تولدی ثبت نشده است.' %}</strong>
+                </article>
+            {% endfor %}
+        </div>
+    </section>
+</section>
+{% endblock %}

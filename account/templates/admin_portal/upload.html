@@ -1,0 +1,76 @@
+{% extends 'admin_portal/_shell.html' %}
+{% load i18n %}
+
+{% block title %}{% blocktrans %}{{ page_title }} | ایگوفیت{% endblocktrans %}{% endblock %}
+
+{% block admin_content %}
+<section class="admin-screen admin-screen--modal">
+    <a href="{% url 'register:admin_search' %}" class="metric-overlay" aria-label="{% trans 'بستن' %}"></a>
+
+    <article class="metric-sheet admin-upload-sheet">
+        <header class="metric-sheet__header">
+            <h1>{% trans 'آپلود فایل' %}</h1>
+            <a href="{% url 'register:admin_search' %}" class="metric-sheet__close" aria-label="{% trans 'بستن' %}">×</a>
+        </header>
+
+        <p class="metric-sheet__description">{% blocktrans with fullname=target_user.fullname %}برای {{ fullname }} تصویر یا ویدیو ثبت کنید.{% endblocktrans %}</p>
+
+        <form method="post" enctype="multipart/form-data" class="admin-upload-form">
+            {% csrf_token %}
+            <input type="hidden" name="upload_kind" value="media">
+            <label class="admin-upload-field">
+                <span>
+                    <strong>{% trans 'آپلود تصویر' %}</strong>
+                    <small>JPG, PNG, WEBP</small>
+                </span>
+                {{ form.image }}
+            </label>
+            <label class="admin-upload-field">
+                <span>
+                    <strong>{% trans 'آپلود ویدیو' %}</strong>
+                    <small>{% trans 'MP4 یا فایل ویدیویی تمرین' %}</small>
+                </span>
+                {{ form.video }}
+            </label>
+            {% if form.non_field_errors %}
+                <div class="admin-form-errors">
+                    {% for error in form.non_field_errors %}
+                        <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+            {% endif %}
+            <button type="submit" class="admin-primary-btn">{% trans 'تایید' %}</button>
+        </form>
+
+        <hr>
+
+        <p class="metric-sheet__description">{% blocktrans with fullname=target_user.fullname %}برنامه تمرینی/غذایی (PDF یا فایل دیگر) برای {{ fullname }} ارسال کنید.{% endblocktrans %}</p>
+
+        <form method="post" enctype="multipart/form-data" class="admin-upload-form">
+            {% csrf_token %}
+            <input type="hidden" name="upload_kind" value="document">
+            <label class="admin-upload-field">
+                <span>
+                    <strong>{{ document_form.title.label }}</strong>
+                </span>
+                {{ document_form.title }}
+            </label>
+            <label class="admin-upload-field">
+                <span>
+                    <strong>{% trans 'فایل برنامه' %}</strong>
+                    <small>{% trans 'PDF یا هر فایل دیگر' %}</small>
+                </span>
+                {{ document_form.file }}
+            </label>
+            {% if document_form.non_field_errors %}
+                <div class="admin-form-errors">
+                    {% for error in document_form.non_field_errors %}
+                        <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+            {% endif %}
+            <button type="submit" class="admin-primary-btn">{% trans 'ارسال برنامه' %}</button>
+        </form>
+    </article>
+</section>
+{% endblock %}
