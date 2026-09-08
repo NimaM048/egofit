@@ -10,13 +10,21 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 import os
+import sys
 from pathlib import Path
 from typing import List
 from dotenv import load_dotenv
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv()
+# Load the conventional ``.env`` file first.  This repository historically
+# shipped its local development variables in a file named ``env`` (without
+# the leading dot), so use that as a backwards-compatible fallback for any
+# values that are not already set. An empty ``.env`` file should not hide the
+# legacy file.
+load_dotenv(BASE_DIR / ".env")
+load_dotenv(BASE_DIR / "env")
 
 
 
@@ -44,10 +52,15 @@ def env_path(name: str, default: str) -> str:
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", 'django-insecure-dev-only-change-me')
-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env_bool("DJANGO_DEBUG", default=False)
+
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "").strip()
+if not SECRET_KEY:
+    if DEBUG or env_bool("DJANGO_ALLOW_INSECURE_DEV_SECRET", default=False):
+        SECRET_KEY = "django-insecure-dev-only-change-me"
+    else:
+        raise ImproperlyConfigured("DJANGO_SECRET_KEY must be set when DJANGO_DEBUG is false.")
 
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "egofit.ir,www.egofit.ir,127.0.0.1,localhost")
 CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS", "https://egofit.ir,https://www.egofit.ir")
@@ -67,6 +80,39 @@ SECURE_REFERRER_POLICY = "same-origin"
 SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_SECURE_HSTS_SECONDS", "0" if DEBUG else "31536000"))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS", default=not DEBUG)
 SECURE_HSTS_PRELOAD = env_bool("DJANGO_SECURE_HSTS_PRELOAD", default=not DEBUG)
+
+# Production must not be able to accidentally disable transport protections via
+# a stale or incomplete environment file.
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = max(SECURE_HSTS_SECONDS, 31536000)
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+
+# The project currently contains inline scripts/styles, so the policy keeps
+# those temporarily compatible while still restricting origins, framing,
+# plugins, form targets and resource types. Refactor inline code to nonces or
+# hashes as a follow-up for a stricter script-src policy.
+CONTENT_SECURITY_POLICY = os.getenv(
+    "DJANGO_CONTENT_SECURITY_POLICY",
+    "default-src 'self'; "
+    "base-uri 'self'; "
+    "object-src 'none'; "
+    "frame-ancestors 'none'; "
+    "form-action 'self' https:; "
+    "img-src 'self' data: blob: https:; "
+    "media-src 'self' blob: https:; "
+    "font-src 'self' data: https:; "
+    "style-src 'self' 'unsafe-inline' https:; "
+    "script-src 'self' 'unsafe-inline' https:; "
+    "connect-src 'self' https:; "
+    "frame-src 'self' https://www.youtube.com https://player.vimeo.com",
+).strip()
+CONTENT_SECURITY_POLICY_REPORT_ONLY = env_bool(
+    "DJANGO_CSP_REPORT_ONLY", default=False
+)
 # Application definition
 
 INSTALLED_APPS = [
@@ -82,6 +128,7 @@ INSTALLED_APPS = [
     'home.apps.HomeConfig',
     'account.apps.AccountConfig',
     'cart.apps.CartConfig',
+    'api.apps.ApiConfig',
     'dbbackup',
     'storages',
     'django_cleanup.apps.CleanupConfig',
@@ -89,6 +136,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'sport_shop.security_headers.SecurityHeadersMiddleware',
+    'django.middleware.gzip.GZipMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'sport_shop.middleware.ResilientSessionMiddleware',
     'sport_shop.middleware.ForceDefaultLanguageMiddleware',
@@ -98,6 +147,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'api.cors.ApiCorsMiddleware',
+    'api.middleware.ApiBearerAuthenticationMiddleware',
     'cart.cart_middleware.CartMiddleware',
 ]
 AUTHENTICATION_BACKENDS = [
@@ -119,8 +170,6 @@ TEMPLATES = [
                 'django.template.context_processors.i18n',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
-                'context_processors.context_processors.article_blog',
-                # 'context_processors.context_processors.series_info',
                 'context_processors.context_processors.categories',
                 'context_processors.context_processors.footer_context_processor',
                 'context_processors.context_processors.blogs_processor',
@@ -173,14 +222,25 @@ else:
 if DATABASES["default"]["ENGINE"].endswith("sqlite3"):
     SILENCED_SYSTEM_CHECKS = ["fields.E180"]
 
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "egofit-local-cache",
-        "TIMEOUT": 300,
-        "KEY_PREFIX": "sport_shop",
+REDIS_URL = os.getenv("REDIS_URL", "").strip()
+if REDIS_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+            "TIMEOUT": 300,
+            "KEY_PREFIX": "sport_shop",
+        }
     }
-}
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "egofit-local-cache",
+            "TIMEOUT": 300,
+            "KEY_PREFIX": "sport_shop",
+        }
+    }
 
 # Password validation
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
@@ -234,16 +294,16 @@ STATICFILES_DIRS = [
     BASE_DIR / 'assets',
 ]
 
-STATIC_ROOT = env_path("DJANGO_STATIC_ROOT", "/home/egofitir/public_html/static")
-MEDIA_ROOT = env_path("DJANGO_MEDIA_ROOT", "/home/egofitir/public_html/media")
+STATIC_ROOT = env_path("DJANGO_STATIC_ROOT", str(BASE_DIR / "staticfiles"))
+MEDIA_ROOT = env_path("DJANGO_MEDIA_ROOT", str(BASE_DIR / "media"))
 
 
-LIARA_PUBLIC_BASE_URL = os.getenv("LIARA_PUBLIC_BASE_URL", "https://egofit.ir").rstrip("/")
+LIARA_PUBLIC_BASE_URL = os.getenv("LIARA_PUBLIC_BASE_URL", "").rstrip("/")
 MEDIA_CACHE_MAX_AGE = int(os.getenv("MEDIA_CACHE_MAX_AGE", "86400"))
 WHITENOISE_USE_FINDERS = DEBUG
 WHITENOISE_AUTOREFRESH = DEBUG
 WHITENOISE_MAX_AGE = int(os.getenv("DJANGO_STATIC_MAX_AGE", "31536000" if not DEBUG else "0"))
-DJANGO_AUTO_COLLECTSTATIC_ON_STARTUP = env_bool("DJANGO_AUTO_COLLECTSTATIC_ON_STARTUP", default=True)
+DJANGO_AUTO_COLLECTSTATIC_ON_STARTUP = env_bool("DJANGO_AUTO_COLLECTSTATIC_ON_STARTUP", default=False)
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
@@ -274,7 +334,7 @@ ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
 
 # S3 Settings
 LIARA_ENDPOINT = os.getenv("LIARA_ENDPOINT")
-LIARA_BUCKET_NAME = os.getenv("LIARA_BUCKET_NAME")
+LIARA_BUCKET_NAME = os.getenv("LIARA_BUCKET_NAME", "egofit").strip()
 LIARA_ACCESS_KEY  = os.getenv("LIARA_ACCESS_KEY")
 LIARA_SECRET_KEY  = os.getenv("LIARA_SECRET_KEY")
 
@@ -348,10 +408,41 @@ LOGGING = {
     },
 }
 
-DJANGO_AUTO_MIGRATE_ON_STARTUP = env_bool("DJANGO_AUTO_MIGRATE_ON_STARTUP", default=True)
+DJANGO_AUTO_MIGRATE_ON_STARTUP = env_bool("DJANGO_AUTO_MIGRATE_ON_STARTUP", default=False)
+
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL or "redis://127.0.0.1:6379/0")
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", CELERY_BROKER_URL)
+CELERY_TASK_ALWAYS_EAGER = env_bool("DJANGO_TASKS_RUN_INLINE", default=False)
+CELERY_TASK_EAGER_PROPAGATES = True
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_TIME_LIMIT = int(os.getenv("CELERY_TASK_TIME_LIMIT", "300"))
+CELERY_TASK_SOFT_TIME_LIMIT = int(os.getenv("CELERY_TASK_SOFT_TIME_LIMIT", "270"))
+DJANGO_TASK_QUEUE_REQUIRED = env_bool("DJANGO_TASK_QUEUE_REQUIRED", default=not DEBUG)
+FFPROBE_BINARY = os.getenv("FFPROBE_BINARY", "ffprobe")
+MAX_UPLOAD_SIZE = int(os.getenv("DJANGO_MAX_UPLOAD_SIZE", str(100 * 1024 * 1024)))
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(
+    os.getenv("DJANGO_DATA_UPLOAD_MAX_MEMORY_SIZE", str(10 * 1024 * 1024))
+)
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(
+    os.getenv("DJANGO_FILE_UPLOAD_MAX_MEMORY_SIZE", str(10 * 1024 * 1024))
+)
 
 
 GHASEDAK_API_KEY = os.getenv("GHASEDAK_API_KEY", "")
 GHASEDAK_LINE_NUMBER = os.getenv("GHASEDAK_LINE_NUMBER", "")
 GHASEDAK_OTP_TEMPLATE = os.getenv("GHASEDAK_OTP_TEMPLATE", "randcode")
 GHASEDAK_OTP_PARAM = os.getenv("GHASEDAK_OTP_PARAM", "param1")
+
+WHATSAPP_ENABLED = env_bool("WHATSAPP_ENABLED", default=False)
+WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN", "")
+WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
+WHATSAPP_API_VERSION = os.getenv("WHATSAPP_API_VERSION", "v21.0")
+WHATSAPP_TEMPLATE_NAME = os.getenv("WHATSAPP_TEMPLATE_NAME", "")
+WHATSAPP_TEMPLATE_LANGUAGE = os.getenv("WHATSAPP_TEMPLATE_LANGUAGE", "fa")
+WHATSAPP_TEMPLATE_INCLUDE_BODY = env_bool("WHATSAPP_TEMPLATE_INCLUDE_BODY", default=True)
+
+# API clients use short-lived access tokens and rotating refresh tokens. The
+# API never authenticates from Django's browser session cookie.
+API_ACCESS_TOKEN_TTL_MINUTES = int(os.getenv("API_ACCESS_TOKEN_TTL_MINUTES", "15"))
+API_REFRESH_TOKEN_TTL_DAYS = int(os.getenv("API_REFRESH_TOKEN_TTL_DAYS", "30"))
+API_CORS_ALLOWED_ORIGINS = env_list("API_CORS_ALLOWED_ORIGINS", "")

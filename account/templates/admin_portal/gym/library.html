@@ -25,6 +25,10 @@
     </section>
 
     <section class="admin-menu-list">
+        <a href="{% url 'register:admin_automatic_programming' %}" class="admin-menu-item">
+            <span>{% trans 'Automatic Programming' %}</span>
+            <span aria-hidden="true">‹</span>
+        </a>
         <a href="{% url 'register:admin_muscle_list' %}" class="admin-menu-item">
             <span>{% trans 'کتابخانه عضلات' %}</span>
             <span aria-hidden="true">‹</span>

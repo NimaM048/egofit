@@ -13,12 +13,13 @@ class CommentService:
         self.repository = repository or CommentRepository()
 
     @transaction.atomic
-    def submit_contact_comment(self, *, cleaned_data: dict):
+    def submit_contact_comment(self, *, cleaned_data: dict, user=None):
         return self.repository.create_contact_comment(
             comment=cleaned_data["comment"],
             name=cleaned_data["name"],
             email=cleaned_data["email"],
             phone=cleaned_data.get("phone") or "",
+            user=user,
         )
 
     @transaction.atomic

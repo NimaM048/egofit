@@ -21,6 +21,13 @@ def liara_storage_enabled():
     )
 
 
+def liara_public_storage_enabled():
+    return bool(
+        getattr(settings, "LIARA_PUBLIC_BASE_URL", "")
+        and getattr(settings, "AWS_STORAGE_BUCKET_NAME", "")
+    )
+
+
 class LiaraMediaStorage(S3Storage):
     querystring_auth = False
 
@@ -50,9 +57,17 @@ class ResilientMediaStorage(FileSystemStorage):
 
     @property
     def remote_storage(self):
-        if self._remote_storage is None and liara_storage_enabled():
+        if self._remote_storage is None and (liara_storage_enabled() or liara_public_storage_enabled()):
             self._remote_storage = LiaraMediaStorage()
         return self._remote_storage
+
+    def _remote_for_io(self):
+        remote_storage = self.remote_storage
+        if remote_storage is None:
+            return None
+        if isinstance(remote_storage, LiaraMediaStorage) and not liara_storage_enabled():
+            return None
+        return remote_storage
 
     def _proxy_url(self, name):
         base_url = (getattr(settings, "RESILIENT_MEDIA_URL", "/media-files/") or "/media-files/").rstrip("/")
@@ -76,9 +91,10 @@ class ResilientMediaStorage(FileSystemStorage):
     def exists(self, name):
         if super().exists(name):
             return True
-        if self.remote_storage:
+        remote_storage = self._remote_for_io()
+        if remote_storage:
             try:
-                return self.remote_storage.exists(name)
+                return remote_storage.exists(name)
             except Exception as exc:
                 logger.debug("Remote media exists check failed for %s: %s", name, exc)
                 return False
@@ -87,29 +103,32 @@ class ResilientMediaStorage(FileSystemStorage):
     def delete(self, name):
         if super().exists(name):
             super().delete(name)
-        if self.remote_storage:
+        remote_storage = self._remote_for_io()
+        if remote_storage:
             try:
-                self.remote_storage.delete(name)
+                remote_storage.delete(name)
             except Exception as exc:
                 logger.debug("Remote media delete failed for %s: %s", name, exc)
 
     def size(self, name):
         if super().exists(name):
             return super().size(name)
-        if self.remote_storage:
+        remote_storage = self._remote_for_io()
+        if remote_storage:
             try:
-                return self.remote_storage.size(name)
+                return remote_storage.size(name)
             except Exception as exc:
                 logger.debug("Remote media size lookup failed for %s: %s", name, exc)
                 return 0
         return 0
 
     def fetch_remote_to_local(self, name):
-        if super().exists(name) or not self.remote_storage:
+        remote_storage = self._remote_for_io()
+        if super().exists(name) or not remote_storage:
             return super().exists(name)
 
         try:
-            remote_file = self.remote_storage.open(name, "rb")
+            remote_file = remote_storage.open(name, "rb")
         except Exception as exc:
             logger.warning("Remote media fetch failed for %s: %s", name, exc)
             return False
@@ -125,12 +144,13 @@ class ResilientMediaStorage(FileSystemStorage):
         return True
 
     def _mirror_to_remote(self, name):
-        if not self.remote_storage:
+        remote_storage = self._remote_for_io()
+        if not remote_storage:
             return
 
         try:
             with super().open(name, "rb") as local_file:
-                self.remote_storage.save(name, local_file)
+                remote_storage.save(name, local_file)
         except Exception as exc:
             # Cloud storage is optional at runtime; local media remains authoritative.
             logger.info("Remote media mirror skipped for %s: %s", name, exc)

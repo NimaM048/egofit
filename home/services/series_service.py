@@ -10,6 +10,7 @@ from home.selectors.comment_selector import CommentSelector
 from home.selectors.course_selector import CourseSelector
 from home.tasks.series_tasks import send_series_notifications
 from home.utils import build_series_engagement_cache_key, format_duration
+from account.tasks.dispatch import dispatch_task
 
 
 class SeriesService:
@@ -91,4 +92,4 @@ class SeriesService:
         else:
             return
 
-        transaction.on_commit(lambda: send_series_notifications.delay(title, message))
+        transaction.on_commit(lambda: dispatch_task(send_series_notifications, title, message))

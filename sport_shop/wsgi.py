@@ -15,7 +15,12 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'sport_shop.settings')
 
 application = get_wsgi_application()
 
-from sport_shop.startup import ensure_database_ready, ensure_static_files_ready
+if os.getenv("DJANGO_AUTO_MIGRATE_ON_STARTUP", "false").strip().lower() in {"1", "true", "yes", "on"}:
+    from sport_shop.startup import ensure_database_ready
 
-ensure_database_ready()
-ensure_static_files_ready()
+    ensure_database_ready()
+
+if os.getenv("DJANGO_AUTO_COLLECTSTATIC_ON_STARTUP", "false").strip().lower() in {"1", "true", "yes", "on"}:
+    from sport_shop.startup import ensure_static_files_ready
+
+    ensure_static_files_ready()

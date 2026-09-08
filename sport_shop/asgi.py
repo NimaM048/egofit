@@ -15,6 +15,7 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'sport_shop.settings')
 
 application = get_asgi_application()
 
-from sport_shop.startup import ensure_database_ready
+if os.getenv("DJANGO_AUTO_MIGRATE_ON_STARTUP", "false").strip().lower() in {"1", "true", "yes", "on"}:
+    from sport_shop.startup import ensure_database_ready
 
-ensure_database_ready()
+    ensure_database_ready()

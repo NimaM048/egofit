@@ -191,7 +191,8 @@
                     button.classList.add("is-end");
                 }
 
-                button.addEventListener("click", function () {
+                button.addEventListener("click", function (event) {
+                    event.stopPropagation();
                     var selectedDay = Number(this.dataset.day);
                     if (!state.draftStart || (state.draftStart && state.draftEnd)) {
                         state.draftStart = String(selectedDay);

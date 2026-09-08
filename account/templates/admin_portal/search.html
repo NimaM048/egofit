@@ -15,6 +15,7 @@
         {{ form.query }}
         <button type="submit" class="admin-primary-btn">{% trans 'جست و جو' %}</button>
     </form>
+    <a href="{% url 'register:admin_user_list' %}" class="admin-primary-btn admin-mobile-client-button">{% trans 'مشاهده لیست کاربران' %}</a>
 
     <section class="admin-stat-grid" aria-label="{% trans 'خلاصه مدیریت' %}">
         <article>

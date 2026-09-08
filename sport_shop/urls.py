@@ -6,6 +6,7 @@ from .error_views import custom_bad_request, custom_page_not_found, custom_permi
 from .media_views import ResilientMediaView
 
 urlpatterns = [
+    path('api/v1/', include('api.urls')),
     path('Mpannel/', admin.site.urls),
     path('i18n/', include('django.conf.urls.i18n')),
     path('media-files/<path:path>', ResilientMediaView.as_view(), name='resilient-media'),

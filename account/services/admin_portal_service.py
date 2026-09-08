@@ -1,15 +1,25 @@
 from __future__ import annotations
 
 import jdatetime
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.utils.translation import gettext_lazy as _
 
 from account.interfaces import PersonalizedSmsMessage
 from account.admin_forms import AdminBulkCoachAssignForm
-from account.models import BirthdaySmsLog, BodyCircumferenceMeasurement, CaliperMeasurement, ClientDocument, ClientMedia, User
+from account.models import (
+    BirthdaySmsLog,
+    BodyCircumferenceMeasurement,
+    CaliperMeasurement,
+    ClientDocument,
+    ClientMedia,
+    User,
+    WorkoutProgram,
+)
 from account.services.coach_request_service import CoachRequestService
+from account.services.notification_service import NotificationService
 from account.services.profile_service import ProfileService
 from account.services.sms_service import SmsService
+from account.utils import is_birthday_today
 
 
 class AdminPortalService:
@@ -35,21 +45,58 @@ class AdminPortalService:
 
     def get_dashboard_context(self) -> dict:
         users = User.objects.exclude(is_admin=True)
+        today = jdatetime.date.today()
+        month_values = {str(today.month), f"{today.month:02d}"}
+        day_values = {str(today.day), f"{today.day:02d}"}
+        birthday_suffixes = {
+            f"{separator}{month}{separator}{day}"
+            for separator in ("/", "-")
+            for month in month_values
+            for day in day_values
+        }
+        birthday_filters = Q()
+        for suffix in birthday_suffixes:
+            birthday_filters |= Q(birth_date_jalali__endswith=suffix)
+
+        stats = users.aggregate(
+            total=Count("pk"),
+            completed=Count(
+                "pk",
+                filter=Q(height_cm__isnull=False, weight_kg__isnull=False),
+            ),
+        )
+        admin_users = list(User.objects.filter(is_admin=True).order_by("fullname"))
+        birthday_candidates = User.objects.exclude(is_admin=True).filter(birthday_filters)
         return {
-            "total_users": users.count(),
-            "completed_profiles_count": users.filter(height_cm__isnull=False, weight_kg__isnull=False).count(),
+            "total_users": stats["total"],
+            "completed_profiles_count": stats["completed"],
             "recent_users": list(users.order_by("-id")[:6]),
-            "admin_users": list(User.objects.filter(is_admin=True).order_by("fullname")),
-            "admin_users_count": User.objects.filter(is_admin=True).count(),
+            "admin_users": admin_users,
+            "admin_users_count": len(admin_users),
             "pending_coach_requests": list(self.coach_request_service.get_pending_queryset()[:10]),
             "pending_coach_requests_count": self.coach_request_service.get_pending_count(),
-            "birthday_users": list(self.get_birthday_users()),
+            "birthday_users": [
+                user
+                for user in birthday_candidates
+                if is_birthday_today(user.birth_date_jalali)
+            ],
         }
 
     def get_birthday_users(self) -> list[User]:
-        from account.utils import is_birthday_today
+        today = jdatetime.date.today()
+        month_values = {str(today.month), f"{today.month:02d}"}
+        day_values = {str(today.day), f"{today.day:02d}"}
+        suffixes = {
+            f"{separator}{month}{separator}{day}"
+            for separator in ("/", "-")
+            for month in month_values
+            for day in day_values
+        }
+        birthday_filter = Q()
+        for suffix in suffixes:
+            birthday_filter |= Q(birth_date_jalali__endswith=suffix)
 
-        candidates = User.objects.exclude(is_admin=True).exclude(birth_date_jalali__isnull=True).exclude(birth_date_jalali="")
+        candidates = User.objects.exclude(is_admin=True).filter(birthday_filter)
         return [user for user in candidates if is_birthday_today(user.birth_date_jalali)]
 
     def send_pending_birthday_sms(self) -> list[User]:
@@ -133,6 +180,7 @@ class AdminPortalService:
         instance.user = user
         instance.uploaded_by = uploaded_by
         instance.save()
+        NotificationService.schedule_media_uploaded(instance)
         return instance
 
     def save_document(self, *, user: User, uploaded_by: User, form) -> ClientDocument:
@@ -140,6 +188,7 @@ class AdminPortalService:
         instance.user = user
         instance.uploaded_by = uploaded_by
         instance.save()
+        NotificationService.schedule_document_uploaded(instance)
         return instance
 
     def get_analysis_context(
@@ -173,12 +222,19 @@ class AdminPortalService:
         )
         return context
 
+    def get_analysis_dashboard_data(self, user: User, *, body_fat_formula: str | None = None) -> dict:
+        return self.profile_service.get_analysis_dashboard_data(user, body_fat_formula=body_fat_formula)
+
+    def get_analysis_metric_series(self, user: User, *, body_fat_formula: str | None = None) -> dict:
+        return self.profile_service.get_analysis_metric_series(user, body_fat_formula=body_fat_formula)
+
     def get_user_summary_context(self, user: User) -> dict:
         return {
             "latest_circumference": user.circumference_records.first(),
             "latest_caliper": user.caliper_records.first(),
             "latest_media": list(user.client_media.all()[:4]),
             "latest_documents": list(user.client_documents.all()[:4]),
+            "latest_workout_programs": list(WorkoutProgram.objects.filter(user=user)[:4]),
             "coach_requests": list(user.coach_requests.all()[:10]),
         }
 

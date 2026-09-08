@@ -4,6 +4,9 @@ import re
 import jdatetime
 from django import template
 from django.core.files.storage import default_storage
+from django.utils.safestring import mark_safe
+
+from home.rich_text import is_safe_article_url, sanitize_rich_text
 
 register = template.Library()
 
@@ -108,3 +111,14 @@ def split_paragraphs(value):
         return paragraphs
 
     return [line.strip() for line in normalized.split("\n") if line.strip()]
+
+
+@register.filter
+def article_content(value):
+    return mark_safe(sanitize_rich_text(value))
+
+
+@register.filter
+def article_link_url(value):
+    value = str(value or "").strip()
+    return value if is_safe_article_url(value) else ""

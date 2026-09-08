@@ -16,8 +16,8 @@ def main():
             "forget to activate a virtual environment?"
         ) from exc
 
-    auto_migrate = os.getenv("DJANGO_AUTO_MIGRATE_ON_STARTUP", "true").strip().lower() in {"1", "true", "yes", "on"}
-    auto_collectstatic = os.getenv("DJANGO_AUTO_COLLECTSTATIC_ON_STARTUP", "true").strip().lower() in {"1", "true", "yes", "on"}
+    auto_migrate = os.getenv("DJANGO_AUTO_MIGRATE_ON_STARTUP", "false").strip().lower() in {"1", "true", "yes", "on"}
+    auto_collectstatic = os.getenv("DJANGO_AUTO_COLLECTSTATIC_ON_STARTUP", "false").strip().lower() in {"1", "true", "yes", "on"}
     if len(sys.argv) > 1 and sys.argv[1] == "runserver" and os.environ.get("RUN_MAIN") != "true":
         if auto_migrate:
             execute_from_command_line([sys.argv[0], "migrate", "--noinput", "--verbosity", "0"])

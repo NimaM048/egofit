@@ -28,7 +28,10 @@ class OrderService:
 
         priced_items = []
         for item in filtered_items:
-            price = normalize_price(item["price"])
+            # Never trust the price copied into a client-controlled session
+            # cart. Re-read the current catalog price before creating an order.
+            product = item["product"]
+            price = normalize_price(product.discount_price or product.main_price or "0")
             priced_items.append({"product": item["product"], "price": price})
 
         subtotal = sum(item["price"] for item in priced_items)

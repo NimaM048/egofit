@@ -20,7 +20,7 @@
     <section class="admin-result-list admin-result-list--grid">
         {% for exercise in exercises %}
             <article class="admin-result-card admin-result-card--media">
-                {% include 'admin_portal/gym/_media_thumb.html' with media=exercise.media %}
+                {% include 'admin_portal/gym/_media_thumb.html' with media=exercise.media_preview %}
                 <div class="admin-result-card__body">
                     <div class="admin-result-card__meta">
                         <div>
@@ -47,5 +47,7 @@
             </article>
         {% endfor %}
     </section>
+
+    {% include 'admin_portal/gym/_pagination.html' %}
 </section>
 {% endblock %}

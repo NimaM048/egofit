@@ -22,37 +22,60 @@
 
                         <article class="content-panel modern-surface rich-content">
                             {% if articleblogmodel.article_description %}
-                                {% for paragraph in articleblogmodel.article_description|split_paragraphs %}
-                                    <div class="rich-content__block">
-                                        <div class="rich-content__text">{{ paragraph|linebreaksbr }}</div>
-                                    </div>
-                                {% endfor %}
+                                <div class="rich-content__block">
+                                    <div class="rich-content__text article-rich-text">{{ articleblogmodel.article_description|article_content }}</div>
+                                </div>
                             {% endif %}
 
                             {% if articleblogmodel.built_in %}
                                 <section class="rich-content__section">
                                     <h2 class="rich-content__heading">ساختار مقاله</h2>
-                                    <div class="rich-content__text">{{ articleblogmodel.built_in|linebreaksbr }}</div>
+                                    <div class="rich-content__text article-rich-text">{{ articleblogmodel.built_in|article_content }}</div>
                                 </section>
                             {% endif %}
 
                             {% if articleblogmodel.article_extra_des1 %}
                                 <section class="rich-content__section">
                                     <h2 class="rich-content__heading">جزئیات بیشتر</h2>
-                                    <div class="rich-content__text">{{ articleblogmodel.article_extra_des1|linebreaksbr }}</div>
+                                    <div class="rich-content__text article-rich-text">{{ articleblogmodel.article_extra_des1|article_content }}</div>
                                 </section>
                             {% endif %}
 
                             {% if articleblogmodel.article_extra_des2 %}
                                 <section class="rich-content__section">
                                     <h2 class="rich-content__heading">جمع‌بندی</h2>
-                                    <div class="rich-content__text">{{ articleblogmodel.article_extra_des2|linebreaksbr }}</div>
+                                    <div class="rich-content__text article-rich-text">{{ articleblogmodel.article_extra_des2|article_content }}</div>
                                 </section>
                             {% endif %}
 
-                            <figure class="rich-content__figure">
-                                <img src="{{ articleblogmodel.image|public_media_url }}" alt="{{ articleblogmodel.title }}">
-                            </figure>
+                            {% with gallery_images=articleblogmodel.gallery_images.all article_links=articleblogmodel.article_links.all %}
+                                {% if gallery_images %}
+                                    <div class="article-gallery">
+                                        {% for gallery_image in gallery_images %}
+                                            <figure class="rich-content__figure article-gallery__item">
+                                                <img src="{{ gallery_image.image|public_media_url }}" alt="{{ gallery_image.alt_text|default:articleblogmodel.title }}" loading="lazy">
+                                                {% if gallery_image.caption %}
+                                                    <figcaption>{{ gallery_image.caption }}</figcaption>
+                                                {% endif %}
+                                            </figure>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+
+                                {% if article_links %}
+                                    <section class="rich-content__section article-links">
+                                        <h2 class="rich-content__heading">لینک‌های مرتبط</h2>
+                                        <div class="article-links__list">
+                                            {% for article_link in article_links %}
+                                                <a href="{{ article_link.url|article_link_url }}" class="article-links__item"{% if article_link.open_in_new_tab %} target="_blank" rel="noopener noreferrer"{% endif %}>
+                                                    <span>{{ article_link.label }}</span>
+                                                    <span aria-hidden="true">↗</span>
+                                                </a>
+                                            {% endfor %}
+                                        </div>
+                                    </section>
+                                {% endif %}
+                            {% endwith %}
                         </article>
                     </div>
 

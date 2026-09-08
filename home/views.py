@@ -8,9 +8,11 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext_lazy as _
 from django.views import View
 from django.views.generic import DetailView, TemplateView
+from django.db.models import Q
 
 from home.forms import CommentForm, CommentSectionForm, ReplyForm
 from home.exceptions import SearchValidationException
+from account.models import CorrectiveExercise, Exercise, ExerciseAbnormalityType, ExerciseBodyPart, Muscle
 from home.models import ArticleBlogModel, Episode, SeriesModel
 from home.selectors.article_selector import ArticleSelector
 from home.selectors.course_selector import CourseSelector
@@ -74,6 +76,147 @@ class HomeView(TemplateView):
         return context
 
 
+class WorkoutLibraryView(TemplateView):
+    template_name = "home/workout-library.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        query = (self.request.GET.get("q") or "").strip()
+        context.update({
+            "query": query,
+            "body_parts": ExerciseBodyPart.objects.filter(
+                Q(name__icontains=query) | Q(name_en__icontains=query) if query else Q()
+            ).order_by("name"),
+            "abnormalities": ExerciseAbnormalityType.objects.filter(
+                Q(name__icontains=query) | Q(name_en__icontains=query) if query else Q()
+            ).order_by("name"),
+            "muscles": Muscle.objects.filter(
+                Q(name__icontains=query) | Q(name_en__icontains=query) | Q(function_note__icontains=query)
+                if query else Q()
+            ).order_by("name"),
+            "search_result_count": 0,
+        })
+        context["search_result_count"] = (
+            context["body_parts"].count()
+            + context["abnormalities"].count()
+            + context["muscles"].count()
+        )
+        return context
+
+
+class WorkoutBodybuildingView(TemplateView):
+    template_name = "home/workout-library-categories.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        query = (self.request.GET.get("q") or "").strip()
+        context["page_title"] = _("تمرینات بدنسازی")
+        context["page_description"] = _("حرکت‌های بدنسازی را بر اساس عضله و بخش بدن پیدا کنید.")
+        context["page_kind"] = "exercises"
+        context["categories"] = ExerciseBodyPart.objects.filter(
+            Q(name__icontains=query) | Q(name_en__icontains=query) if query else Q()
+        ).order_by("name")
+        context["category_url_name"] = "home:workout_body_part"
+        context["query"] = query
+        return context
+
+
+class WorkoutCorrectiveLibraryView(TemplateView):
+    template_name = "home/workout-library-categories.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        query = (self.request.GET.get("q") or "").strip()
+        context["page_title"] = _("حرکات اصلاحی")
+        context["page_description"] = _("حرکت‌های اصلاحی را بر اساس ناهنجاری انتخاب کنید.")
+        context["page_kind"] = "correctives"
+        context["categories"] = ExerciseAbnormalityType.objects.filter(
+            Q(name__icontains=query) | Q(name_en__icontains=query) if query else Q()
+        ).order_by("name")
+        context["category_url_name"] = "home:workout_abnormality"
+        context["query"] = query
+        return context
+
+
+class WorkoutMusculologyView(TemplateView):
+    template_name = "home/workout-library-muscles.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        query = (self.request.GET.get("q") or "").strip()
+        muscles = Muscle.objects.all()
+        if query:
+            muscles = muscles.filter(Q(name__icontains=query) | Q(name_en__icontains=query) | Q(function_note__icontains=query))
+        context.update({
+            "page_title": _("آناتومی عضلات"),
+            "muscles": muscles.order_by("name"),
+            "query": query,
+        })
+        return context
+
+
+class WorkoutBodyPartView(TemplateView):
+    template_name = "home/workout-library-list.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        category = get_object_or_404(ExerciseBodyPart, pk=kwargs["pk"])
+        query = (self.request.GET.get("q") or "").strip()
+        exercises = Exercise.objects.filter(body_part=category).select_related(
+            "primary_muscle", "secondary_muscle", "movement_type", "joint_type",
+            "difficulty_level", "equipment_type"
+        )
+        if query:
+            exercises = exercises.filter(Q(name__icontains=query) | Q(name_en__icontains=query) | Q(description__icontains=query))
+        context.update({
+            "page_title": category.name,
+            "page_description": _("حرکت‌های مناسب این بخش بدن را با جزئیات کامل ببینید."),
+            "page_kind": "exercises",
+            "query": query,
+            "items": exercises,
+            "category": category,
+        })
+        return context
+
+
+class WorkoutAbnormalityView(TemplateView):
+    template_name = "home/workout-library-list.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        category = get_object_or_404(ExerciseAbnormalityType, pk=kwargs["pk"])
+        query = (self.request.GET.get("q") or "").strip()
+        items = CorrectiveExercise.objects.filter(abnormality_type=category).select_related("equipment")
+        if query:
+            items = items.filter(Q(name__icontains=query) | Q(description__icontains=query))
+        context.update({
+            "page_title": category.name,
+            "page_description": _("حرکت‌های اصلاحی این ناهنجاری را با توضیحات کامل ببینید."),
+            "page_kind": "correctives",
+            "query": query,
+            "items": items,
+            "category": category,
+        })
+        return context
+
+
+class WorkoutMuscleView(TemplateView):
+    template_name = "home/workout-library-list.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        muscle = get_object_or_404(Muscle, pk=kwargs["pk"])
+        context.update({
+            "page_title": muscle.name,
+            "page_description": _("اطلاعات کامل آناتومیک و عملکردی این عضله."),
+            "page_kind": "muscles",
+            "items": [muscle],
+            "query": "",
+            "category": muscle,
+        })
+        return context
+
+
 def handle_form_submission(request):
     return comment_view(request)
 
@@ -82,7 +225,10 @@ def comment_view(request):
     if request.method == "POST":
         form = CommentForm(request.POST)
         if form.is_valid():
-            comment_service.submit_contact_comment(cleaned_data=form.cleaned_data)
+            comment_service.submit_contact_comment(
+                cleaned_data=form.cleaned_data,
+                user=request.user if request.user.is_authenticated else None,
+            )
             messages.success(request, _("پیام شما با موفقیت ارسال شد!"))
             return redirect("home:contact_us")
         messages.error(request, _("خطا در ارسال پیام، لطفا دوباره تلاش کنید."))
@@ -122,10 +268,15 @@ class SeriesView(TemplateView):
 class ArticleDetailView(DetailView):
     model = ArticleBlogModel
     template_name = "home/article-detail.html"
-    queryset = ArticleBlogModel.objects.select_related("author", "language_kinds").all()
+    queryset = (
+        ArticleBlogModel.objects.select_related("author", "language_kinds")
+        .prefetch_related("gallery_images", "article_links")
+        .all()
+    )
 
     def get_object(self, queryset=None):
-        return get_object_or_404(ArticleBlogModel.objects.select_related("author", "language_kinds"), slug=self.kwargs["slug"])
+        queryset = queryset or self.get_queryset()
+        return get_object_or_404(queryset, slug=self.kwargs["slug"])
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

@@ -17,6 +17,7 @@ from account.admin_forms import (
     AdminCircumferenceForm,
     AdminClientDocumentForm,
     AdminClientMediaForm,
+    AdminCommentModerationForm,
     AdminPersonalInfoForm,
     AdminRoleToggleForm,
     AdminUserCoachForm,
@@ -25,6 +26,7 @@ from account.admin_forms import (
 )
 from account.froms import PasswordChanged
 from account.models import BirthdaySmsLog, BodyCircumferenceMeasurement, CaliperMeasurement, CoachRequest, User
+from home.models import Comment, CommentSectionModel, Reply
 from account.portal_mixins import AdminRequiredMixin
 from account.selectors.user_selector import UserSelector
 from account.services.admin_portal_service import AdminPortalService
@@ -55,7 +57,6 @@ class AdminSearchView(AdminPageMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        admin_portal_service.send_pending_birthday_sms()
         query = (self.request.GET.get("query") or "").strip()
         form = AdminUserSearchForm(initial={"query": query})
         results = admin_portal_service.search_users(query=query) if query else []
@@ -342,6 +343,17 @@ class AdminUserAnalysisView(AdminUserMixin, TemplateView):
                 use_full_chart_range=True,
             )
         )
+        selected_body_fat_formula = context.get("analysis_selected_body_fat_formula")
+        context.update(
+            admin_portal_service.get_analysis_dashboard_data(
+                self.target_user,
+                body_fat_formula=selected_body_fat_formula,
+            )
+        )
+        context["analysis_metric_series"] = admin_portal_service.get_analysis_metric_series(
+            self.target_user,
+            body_fat_formula=selected_body_fat_formula,
+        )
         context["page_title"] = self.target_user.fullname
         return context
 
@@ -513,6 +525,52 @@ class AdminNotificationsView(AdminPageMixin, TemplateView):
             {
                 "pending_coach_requests": list(admin_portal_service.coach_request_service.get_pending_queryset()),
                 "birthday_users": birthday_users,
+                "pending_opinions": list(
+                    Comment.objects.filter(publication_status=Comment.PublicationStatus.PENDING)
+                    .select_related("user")
+                    .order_by("-id")
+                ),
+                "pending_comments": list(
+                    CommentSectionModel.objects.filter(publication_status=CommentSectionModel.PublicationStatus.PENDING)
+                    .select_related("user", "series")
+                    .order_by("-created_at")
+                ),
             }
         )
         return context
+
+
+class AdminCommentModerationView(AdminRequiredMixin, View):
+    def post(self, request):
+        kind = request.POST.get("kind")
+        object_id = request.POST.get("object_id")
+        form = AdminCommentModerationForm(request.POST)
+        if not form.is_valid():
+            messages.error(request, _("عملیات دیدگاه معتبر نیست."))
+            return redirect("register:admin_notifications")
+
+        action = form.cleaned_data["action"]
+        response_text = (form.cleaned_data.get("response") or "").strip()
+        if kind == "opinion":
+            item = get_object_or_404(Comment, pk=object_id)
+            if action in {"approve", "reject"}:
+                item.is_active = action == "approve"
+                item.publication_status = Comment.PublicationStatus.APPROVED if action == "approve" else Comment.PublicationStatus.REJECTED
+            if response_text:
+                item.admin_response = response_text
+                item.responded_at = timezone.now()
+            item.save(update_fields=["is_active", "publication_status", "admin_response", "responded_at"])
+        elif kind == "comment":
+            item = get_object_or_404(CommentSectionModel, pk=object_id)
+            if action in {"approve", "reject"}:
+                item.is_active = action == "approve"
+                item.publication_status = CommentSectionModel.PublicationStatus.APPROVED if action == "approve" else CommentSectionModel.PublicationStatus.REJECTED
+                item.save(update_fields=["is_active", "publication_status"])
+            if response_text:
+                Reply.objects.create(comment=item, user=request.user, text=response_text, is_active=True)
+        else:
+            messages.error(request, _("نوع دیدگاه معتبر نیست."))
+            return redirect("register:admin_notifications")
+
+        messages.success(request, _("عملیات دیدگاه با موفقیت ثبت شد."))
+        return redirect("register:admin_notifications")

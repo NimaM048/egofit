@@ -17,4 +17,11 @@ urlpatterns = [
     path('blog/search/', views.BlogProductView.as_view(), name="blog_search"),
     path('series/epidos/<int:pk>/', views.SeriesEpisodeDetailView.as_view(), name="series_episod"),
     path('episodes/<int:pk>/video/', views.EpisodeVideoStreamView.as_view(), name="episode_video"),
+    path('workout-library/', views.WorkoutLibraryView.as_view(), name='workout_library'),
+    path('workout-library/bodybuilding/', views.WorkoutBodybuildingView.as_view(), name='workout_bodybuilding'),
+    path('workout-library/corrective/', views.WorkoutCorrectiveLibraryView.as_view(), name='workout_corrective_library'),
+    path('workout-library/musculology/', views.WorkoutMusculologyView.as_view(), name='workout_musculology'),
+    path('workout-library/body-part/<int:pk>/', views.WorkoutBodyPartView.as_view(), name='workout_body_part'),
+    path('workout-library/abnormality/<int:pk>/', views.WorkoutAbnormalityView.as_view(), name='workout_abnormality'),
+    path('workout-library/muscle/<int:pk>/', views.WorkoutMuscleView.as_view(), name='workout_muscle'),
 ]

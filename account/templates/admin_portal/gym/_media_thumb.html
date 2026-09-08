@@ -1,7 +1,7 @@
 {% load my_tags i18n %}{% comment %}Renders a media thumbnail (video/image) for a gym-library card. Expects `media` (a FileField).{% endcomment %}
 {% if media %}
     {% with url=media|public_media_url name=media.name|lower %}
-        {% if '.mp4' in name or '.webm' in name or '.mov' in name or '.m4v' in name or '.ogg' in name or '.ogv' in name %}
+        {% if '.mp4' in name or '.webm' in name or '.mov' in name or '.m4v' in name or '.ogg' in name or '.ogv' in name or '.avi' in name or '.mkv' in name %}
             <div class="admin-result-card__media">
                 <span class="admin-result-card__media-badge"><span aria-hidden="true">▶</span> {% trans 'ویدیو' %}</span>
                 <video src="{{ url }}#t=0.1" preload="metadata" controls playsinline muted></video>

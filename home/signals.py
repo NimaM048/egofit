@@ -6,6 +6,8 @@ from django.db.models.signals import post_delete, post_save
 from home.constants import HOME_PAGE_CACHE_PREFIX
 from home.models import (
     Advantage,
+    ArticleBlogImage,
+    ArticleBlogLink,
     ArticleBlogModel,
     Category,
     CategoryBlog,
@@ -33,6 +35,8 @@ for model in (
     HomePageHighlightCard,
     Advantage,
     ArticleBlogModel,
+    ArticleBlogImage,
+    ArticleBlogLink,
     Category,
     CategoryBlog,
     Counseling,

@@ -62,6 +62,7 @@ def _has_pending_migrations() -> bool:
 
 def ensure_database_ready() -> bool:
     if not getattr(settings, "DJANGO_AUTO_MIGRATE_ON_STARTUP", False):
+        logger.debug("Startup migration disabled; run manage.py migrate during deployment.")
         return False
 
     if not apps.ready:
@@ -86,6 +87,7 @@ def ensure_database_ready() -> bool:
 
 def ensure_static_files_ready() -> bool:
     if not getattr(settings, "DJANGO_AUTO_COLLECTSTATIC_ON_STARTUP", False):
+        logger.debug("Startup collectstatic disabled; run manage.py collectstatic during deployment.")
         return False
 
     if not apps.ready:

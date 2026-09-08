@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from django import forms
 from django.contrib import admin
 from django.utils.html import format_html
 from modeltranslation.admin import TranslationAdmin, TranslationTabularInline
@@ -8,6 +9,8 @@ from home.models import (
     AboutPage,
     Activity,
     Advantage,
+    ArticleBlogImage,
+    ArticleBlogLink,
     ArticleBlogModel,
     BlogListingPage,
     Category,
@@ -34,12 +37,63 @@ from home.models import (
     SeriesModel,
     SiteSettings,
 )
+from home.rich_text import sanitize_rich_text
 
 
 def _image_preview(file_field, *, height=60):
     if not file_field:
         return "—"
     return format_html('<img src="{}" style="height:{}px;border-radius:8px;" />', file_field.url, height)
+
+
+class RichTextWidget(forms.Textarea):
+    class Media:
+        css = {"all": ("css/article-editor.css",)}
+        js = ("js/article-editor.js",)
+
+    def __init__(self, attrs=None):
+        default_attrs = {"class": "rich-text-source", "rows": 12}
+        if attrs:
+            default_attrs.update(attrs)
+        super().__init__(attrs=default_attrs)
+
+
+class ArticleBlogAdminForm(forms.ModelForm):
+    class Meta:
+        model = ArticleBlogModel
+        fields = "__all__"
+        widgets = {
+            "article_description": RichTextWidget(),
+            "built_in": RichTextWidget(),
+            "article_extra_des1": RichTextWidget(),
+            "article_extra_des2": RichTextWidget(),
+        }
+
+    def clean_article_description(self):
+        return sanitize_rich_text(self.cleaned_data.get("article_description"))
+
+    def clean_built_in(self):
+        return sanitize_rich_text(self.cleaned_data.get("built_in"))
+
+    def clean_article_extra_des1(self):
+        return sanitize_rich_text(self.cleaned_data.get("article_extra_des1"))
+
+    def clean_article_extra_des2(self):
+        return sanitize_rich_text(self.cleaned_data.get("article_extra_des2"))
+
+
+class ArticleBlogImageInline(admin.TabularInline):
+    model = ArticleBlogImage
+    extra = 1
+    fields = ("image", "alt_text", "caption", "sort_order")
+    ordering = ("sort_order", "id")
+
+
+class ArticleBlogLinkInline(admin.TabularInline):
+    model = ArticleBlogLink
+    extra = 1
+    fields = ("label", "url", "open_in_new_tab", "sort_order")
+    ordering = ("sort_order", "id")
 
 
 @admin.register(Episode)
@@ -51,8 +105,20 @@ class EpisodeAdmin(admin.ModelAdmin):
 
 @admin.register(Comment)
 class CommentAdmin(admin.ModelAdmin):
-    list_display = ("name", "email", "phone")
-    search_fields = ("name", "email", "phone")
+    list_display = ("name", "user", "email", "phone", "publication_status")
+    list_select_related = ("user",)
+    search_fields = (
+        "name",
+        "email",
+        "phone",
+        "user__fullname",
+        "user__display_name",
+        "user__phone",
+        "user__email",
+    )
+    search_help_text = "جستجو بر اساس نام نظر‌دهنده، کاربر، شماره تماس یا ایمیل"
+    list_filter = ("publication_status",)
+    autocomplete_fields = ("user",)
 
 
 @admin.register(SeriesModel)
@@ -64,9 +130,43 @@ class SeriesModelAdmin(admin.ModelAdmin):
 
 @admin.register(ArticleBlogModel)
 class ArticleBlogModelAdmin(admin.ModelAdmin):
+    form = ArticleBlogAdminForm
     list_display = ("title", "author", "reading_time")
     search_fields = ("title", "author__fullname")
     list_filter = ("reading_time",)
+    prepopulated_fields = {"slug": ("title",)}
+    inlines = (ArticleBlogImageInline, ArticleBlogLinkInline)
+    fieldsets = (
+        (
+            "اطلاعات اصلی",
+            {
+                "fields": (
+                    "title",
+                    "slug",
+                    "language_kinds",
+                    "image",
+                    "author",
+                    "reading_time",
+                    "article_excerpt",
+                    "author_image",
+                    "author_description",
+                ),
+            },
+        ),
+        (
+            "محتوای مقاله",
+            {
+                "description": "برای قالب‌بندی متن از نوار ابزار استفاده کنید. لینک‌های قابل مشاهده مقاله را از بخش «لینک‌های مقاله» پایین فرم اضافه کنید.",
+                "fields": (
+                    "article_description",
+                    "built_in",
+                    "article_extra_des1",
+                    "article_extra_des2",
+                ),
+                "classes": ("wide",),
+            },
+        ),
+    )
 
 
 @admin.register(Season)
@@ -228,10 +328,11 @@ class ReplyInline(admin.TabularInline):
 
 @admin.register(CommentSectionModel)
 class CommentSectionModelAdmin(admin.ModelAdmin):
-    list_display = ("__str__", "created_at")
+    list_display = ("__str__", "user", "created_at", "publication_status")
     inlines = [ReplyInline]
+    autocomplete_fields = ("user", "series", "parent")
     search_fields = ("text", "user__fullname", "series__title")
-    list_filter = ("created_at",)
+    list_filter = ("created_at", "publication_status", "user")
 
 
 @admin.register(Reply)

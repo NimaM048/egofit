@@ -57,7 +57,7 @@ class ProfileService:
         paid_orders_count = paid_orders.count()
         comments_count = comments.count()
         notifications_count = self.notification_service.get_notifications_count(user)
-        recent_notifications = self.notification_service.get_dashboard_notifications(user, limit=5)
+        recent_notifications = list(self.notification_service.get_dashboard_notifications(user, limit=5))
         recent_courses = list(learning_courses[:4])
         recent_orders = list(paid_orders[:5])
         recent_comments = list(comments[:5])
@@ -96,10 +96,10 @@ class ProfileService:
             "profile_metrics": self.get_profile_metrics(user),
             "profile_overview_cards": self.get_profile_overview_cards(user),
             "is_birthday_today": is_birthday_today(user.birth_date_jalali),
-            "dashboard_feed": self.get_dashboard_feed(user),
+            "dashboard_feed": self.get_dashboard_feed(user, recent_notifications=recent_notifications),
         }
 
-    def get_dashboard_feed(self, user) -> dict | None:
+    def get_dashboard_feed(self, user, *, recent_notifications=None) -> dict | None:
         """A single banner item for the dashboard: birthday greeting, else latest admin news."""
         if is_birthday_today(user.birth_date_jalali):
             display_name = user.display_name or user.fullname
@@ -108,7 +108,9 @@ class ProfileService:
                 "title": _("🎉 تولدت مبارک، %(name)s!") % {"name": display_name},
                 "body": _("تیم ایگوفیت برات یک سال پر از پیشرفت آرزو می‌کند."),
             }
-        latest = list(self.notification_service.get_dashboard_notifications(user, limit=1))
+        latest = list(recent_notifications[:1]) if recent_notifications is not None else list(
+            self.notification_service.get_dashboard_notifications(user, limit=1)
+        )
         if latest:
             notification = latest[0]
             return {
@@ -127,12 +129,7 @@ class ProfileService:
 
     @staticmethod
     def _calculate_bmi(weight_kg: int | None, height_cm: int | None):
-        if not weight_kg or not height_cm:
-            return None
-        height_m = height_cm / 100
-        if height_m <= 0:
-            return None
-        return round(weight_kg / (height_m * height_m), 1)
+        return calculate_bmi(weight_kg, height_cm)
 
     @staticmethod
     def _bmi_label(bmi: float | None) -> str:
@@ -443,13 +440,14 @@ class ProfileService:
         }
 
     @classmethod
-    def _find_caliper_for_datetime(cls, user, dt):
+    def _find_caliper_for_datetime(cls, user, dt, caliper_records=None):
         import jdatetime
         from django.utils import timezone
 
         target_local = timezone.localtime(dt)
         target_j = jdatetime.datetime.fromgregorian(datetime=target_local).date()
-        for record in user.caliper_records.all():
+        records = caliper_records if caliper_records is not None else user.caliper_records.all()
+        for record in records:
             record_local = timezone.localtime(record.recorded_at)
             record_j = jdatetime.datetime.fromgregorian(datetime=record_local).date()
             if record_j == target_j:
@@ -457,9 +455,35 @@ class ProfileService:
         return None
 
     @staticmethod
-    def _body_fat_from_caliper(caliper, *, age: int | None, gender: str | None) -> float | None:
+    def _body_fat_from_caliper(
+        caliper,
+        *,
+        age: int | None,
+        gender: str | None,
+        formula: str | None = None,
+    ) -> float | None:
         skinfolds = CaliperSkinfolds.from_model(caliper)
-        result = calculate_body_fat_from_caliper(skinfolds, age=age, gender=gender)
+        result = calculate_body_fat_from_caliper(skinfolds, age=age, gender=gender, formula=formula)
+        return result.body_fat_percent if result else None
+
+    @staticmethod
+    def _body_fat_from_measurements(
+        *,
+        caliper,
+        circumference,
+        height_cm,
+        age: int | None,
+        gender: str | None,
+        formula: str | None = None,
+    ) -> float | None:
+        result = resolve_body_fat_result(
+            skinfolds=CaliperSkinfolds.from_model(caliper),
+            circumference=CircumferenceMeasures.from_model(circumference),
+            height_cm=height_cm,
+            age=age,
+            gender=gender,
+            formula=formula,
+        )
         return result.body_fat_percent if result else None
 
     @staticmethod
@@ -489,7 +513,15 @@ class ProfileService:
             gender=user.gender,
         )
 
-    def _metric_value_from_records(self, user, metric: str, circumference, caliper):
+    def _metric_value_from_records(
+        self,
+        user,
+        metric: str,
+        circumference,
+        caliper,
+        *,
+        body_fat_formula: str | None = None,
+    ):
         age = self._resolve_age(user)
         gender = user.gender
         weight = user.weight_kg
@@ -508,6 +540,7 @@ class ProfileService:
             gender=gender,
             skinfolds=skinfolds,
             circumference=measures,
+            body_fat_formula=body_fat_formula,
         )
 
         if metric == "body_fat":
@@ -524,21 +557,56 @@ class ProfileService:
             return snapshot.bmr
         return snapshot.body_fat_percent
 
-    def _metric_series_points(self, user, metric: str, start_j, end_j) -> list[tuple]:
+    def _metric_series_points(
+        self,
+        user,
+        metric: str,
+        start_j,
+        end_j,
+        *,
+        body_fat_formula: str | None = None,
+        circumference_records=None,
+        caliper_records=None,
+    ) -> list[tuple]:
         """Sorted ``(jalali_date, value)`` points for a metric within a Jalali date range."""
         series: list[tuple] = []
         age = self._resolve_age(user)
         gender = user.gender
+        selected_body_fat_formula = self._resolve_body_fat_formula(body_fat_formula)
+        circ_records = circumference_records if circumference_records is not None else user.circumference_records.all()
+        cal_records = caliper_records if caliper_records is not None else user.caliper_records.all()
 
         if metric == "body_fat":
-            for record in user.caliper_records.all():
-                j_date = self._parse_jalali_date_obj(self._jalali_from_datetime(record.recorded_at))
-                if start_j <= j_date <= end_j:
-                    value = self._body_fat_from_caliper(record, age=age, gender=gender)
-                    if value is not None:
-                        series.append((j_date, value))
+            if selected_body_fat_formula == "circumference":
+                for record in circ_records:
+                    j_date = self._parse_jalali_date_obj(self._record_jalali_date(record))
+                    if start_j <= j_date <= end_j:
+                        paired_caliper = self._find_caliper_for_datetime(user, record.recorded_at, caliper_records=cal_records)
+                        height = record.height_cm if record.height_cm is not None else user.height_cm
+                        value = self._body_fat_from_measurements(
+                            caliper=paired_caliper,
+                            circumference=record,
+                            height_cm=height,
+                            age=age,
+                            gender=gender,
+                            formula=selected_body_fat_formula,
+                        )
+                        if value is not None:
+                            series.append((j_date, value))
+            else:
+                for record in cal_records:
+                    j_date = self._parse_jalali_date_obj(self._record_jalali_date(record))
+                    if start_j <= j_date <= end_j:
+                        value = self._body_fat_from_caliper(
+                            record,
+                            age=age,
+                            gender=gender,
+                            formula=selected_body_fat_formula,
+                        )
+                        if value is not None:
+                            series.append((j_date, value))
         elif metric in ("whr", "whtr"):
-            for record in user.circumference_records.all():
+            for record in circ_records:
                 j_date = self._parse_jalali_date_obj(self._jalali_from_datetime(record.recorded_at))
                 if start_j <= j_date <= end_j:
                     value = (
@@ -549,41 +617,91 @@ class ProfileService:
                     if value is not None:
                         series.append((j_date, value))
         elif metric == "lean_mass":
-            for record in user.caliper_records.all():
-                j_date = self._parse_jalali_date_obj(self._jalali_from_datetime(record.recorded_at))
-                if start_j <= j_date <= end_j:
-                    body_fat = self._body_fat_from_caliper(record, age=age, gender=gender)
-                    value = self._lean_mass_from_user(user, body_fat)
-                    if value is not None:
-                        series.append((j_date, value))
+            if selected_body_fat_formula == "circumference":
+                for record in circ_records:
+                    j_date = self._parse_jalali_date_obj(self._record_jalali_date(record))
+                    if start_j <= j_date <= end_j:
+                        paired_caliper = self._find_caliper_for_datetime(user, record.recorded_at, caliper_records=cal_records)
+                        height = record.height_cm if record.height_cm is not None else user.height_cm
+                        body_fat = self._body_fat_from_measurements(
+                            caliper=paired_caliper,
+                            circumference=record,
+                            height_cm=height,
+                            age=age,
+                            gender=gender,
+                            formula=selected_body_fat_formula,
+                        )
+                        value = self._lean_mass_from_user(user, body_fat)
+                        if value is not None:
+                            series.append((j_date, value))
+            else:
+                for record in cal_records:
+                    j_date = self._parse_jalali_date_obj(self._record_jalali_date(record))
+                    if start_j <= j_date <= end_j:
+                        body_fat = self._body_fat_from_caliper(
+                            record,
+                            age=age,
+                            gender=gender,
+                            formula=selected_body_fat_formula,
+                        )
+                        value = self._lean_mass_from_user(user, body_fat)
+                        if value is not None:
+                            series.append((j_date, value))
         elif metric == "bmi":
             bmi = calculate_bmi(user.weight_kg, user.height_cm)
             if bmi is not None:
-                for record in user.circumference_records.all():
+                for record in circ_records:
                     j_date = self._parse_jalali_date_obj(self._jalali_from_datetime(record.recorded_at))
                     if start_j <= j_date <= end_j:
                         series.append((j_date, bmi))
         elif metric == "bmr":
             bmr = self._bmr_value(user, age)
             if bmr is not None:
-                for record in user.circumference_records.all():
+                for record in circ_records:
                     j_date = self._parse_jalali_date_obj(self._jalali_from_datetime(record.recorded_at))
                     if start_j <= j_date <= end_j:
                         series.append((j_date, bmr))
         else:
-            for record in user.circumference_records.all():
+            for record in circ_records:
                 j_date = self._parse_jalali_date_obj(self._jalali_from_datetime(record.recorded_at))
                 if start_j <= j_date <= end_j:
-                    paired_caliper = self._find_caliper_for_datetime(user, record.recorded_at)
-                    value = self._metric_value_from_records(user, metric, record, paired_caliper)
+                    paired_caliper = self._find_caliper_for_datetime(user, record.recorded_at, caliper_records=cal_records)
+                    value = self._metric_value_from_records(
+                        user,
+                        metric,
+                        record,
+                        paired_caliper,
+                        body_fat_formula=selected_body_fat_formula,
+                    )
                     if value is not None:
                         series.append((j_date, value))
 
         series.sort(key=lambda item: item[0])
         return series
 
-    def _collect_metric_series(self, user, metric: str, start_j, end_j) -> list[float]:
-        return [float(value) for _, value in self._metric_series_points(user, metric, start_j, end_j)]
+    def _collect_metric_series(
+        self,
+        user,
+        metric: str,
+        start_j,
+        end_j,
+        *,
+        body_fat_formula: str | None = None,
+        circumference_records=None,
+        caliper_records=None,
+    ) -> list[float]:
+        return [
+            float(value)
+            for _, value in self._metric_series_points(
+                user,
+                metric,
+                start_j,
+                end_j,
+                body_fat_formula=body_fat_formula,
+                circumference_records=circumference_records,
+                caliper_records=caliper_records,
+            )
+        ]
 
     @staticmethod
     def _metric_round(metric: str, value: float):
@@ -627,15 +745,22 @@ class ProfileService:
             return int(round(float(value)))
         return round(float(value), decimals)
 
-    def get_analysis_metric_series(self, user) -> dict:
+    def get_analysis_metric_series(self, user, *, body_fat_formula: str | None = None) -> dict:
         """Per-metric labelled time series for the client-side metric dropdown chart."""
         default_start, default_end = self._default_analysis_date_range(user)
         start_j = self._parse_jalali_date_obj(default_start)
         end_j = self._parse_jalali_date_obj(default_end)
+        selected_body_fat_formula = self._resolve_body_fat_formula(body_fat_formula)
         series: dict = {}
         for option in self.ANALYSIS_METRIC_OPTIONS:
             key = option["key"]
-            points = self._metric_series_points(user, key, start_j, end_j)
+            points = self._metric_series_points(
+                user,
+                key,
+                start_j,
+                end_j,
+                body_fat_formula=selected_body_fat_formula,
+            )
             series[key] = {
                 "labels": [point[0].strftime("%Y/%m/%d") for point in points],
                 "values": [self._metric_round(key, point[1]) for point in points],
@@ -726,11 +851,13 @@ class ProfileService:
             for value in (user.weight_kg, user.height_cm, user.birth_date_jalali, user.blood_group, user.gender)
         ) or user.circumference_records.exists() or user.caliper_records.exists()
 
+        circumference_records = list(user.circumference_records.all()[:120])
+        caliper_records = list(user.caliper_records.all()[:120])
         circ_by_date: dict = {}
-        for record in sorted(user.circumference_records.all()[:120], key=lambda r: r.recorded_at, reverse=True):
+        for record in sorted(circumference_records, key=lambda r: r.recorded_at, reverse=True):
             circ_by_date.setdefault(self._record_jalali_date(record), record)
         cal_by_date: dict = {}
-        for record in sorted(user.caliper_records.all()[:120], key=lambda r: r.recorded_at, reverse=True):
+        for record in sorted(caliper_records, key=lambda r: r.recorded_at, reverse=True):
             cal_by_date.setdefault(self._record_jalali_date(record), record)
 
         circ_dates = sorted(circ_by_date.keys(), reverse=True)
@@ -746,12 +873,12 @@ class ProfileService:
         caliper_dates = sorted(cal_by_date.keys(), reverse=True)
         selected_date = selected_circ_date or (caliper_dates[0] if caliper_dates else None)
 
-        latest_circumference = circ_by_date.get(selected_circ_date) or user.circumference_records.first()
+        latest_circumference = circ_by_date.get(selected_circ_date) or (circumference_records[0] if circumference_records else None)
         paired_caliper = (
-            self._find_caliper_for_datetime(user, latest_circumference.recorded_at)
+            self._find_caliper_for_datetime(user, latest_circumference.recorded_at, caliper_records=caliper_records)
             if latest_circumference
-            else user.caliper_records.first()
-        ) or user.caliper_records.first()
+            else (caliper_records[0] if caliper_records else None)
+        ) or (caliper_records[0] if caliper_records else None)
 
         skinfolds = CaliperSkinfolds.from_model(paired_caliper)
         measures = CircumferenceMeasures.from_model(latest_circumference)
@@ -777,7 +904,15 @@ class ProfileService:
         )
         measurements = self._build_measurement_display(latest_circumference, paired_caliper)
 
-        raw_series = self._collect_metric_series(user, selected_metric, start_j, end_j)
+        raw_series = self._collect_metric_series(
+            user,
+            selected_metric,
+            start_j,
+            end_j,
+            body_fat_formula=selected_body_fat_formula,
+            circumference_records=circumference_records,
+            caliper_records=caliper_records,
+        )
         chart_has_real_data = len(raw_series) >= 2
         if chart_has_real_data:
             chart_input = self._scale_series_for_chart(selected_metric, raw_series)
@@ -791,6 +926,7 @@ class ProfileService:
             selected_metric,
             latest_circumference,
             paired_caliper,
+            body_fat_formula=selected_body_fat_formula,
         )
         analysis_value = self._format_metric_display(selected_metric, current_value)
         bmr_display = composition.bmr if composition.bmr is not None else _("ثبت نشده")
@@ -930,6 +1066,8 @@ class ProfileService:
                 "fat_mass_kg": composition.fat_mass_kg,
                 "lean_mass_kg": composition.lean_mass_kg,
                 "tdee": composition.tdee,
+                "calories_for_loss": composition.calories_for_loss,
+                "calories_for_gain": composition.calories_for_gain,
                 "protein_min_g": composition.protein_min_g,
                 "protein_max_g": composition.protein_max_g,
                 "whr_status": composition.whr_status,
@@ -1019,11 +1157,12 @@ class ProfileService:
             "analysis_bmi": bmi,
         }
 
-    def get_analysis_dashboard_data(self, user) -> dict:
+    def get_analysis_dashboard_data(self, user, *, body_fat_formula: str | None = None) -> dict:
         """JSON-ready time-series + gauges + history rows for the analysis dashboard (Chart.js)."""
         age = self._resolve_age(user)
         gender = user.gender
         activity_factor = activity_factor_for_level(user.activity_level)
+        selected_body_fat_formula = self._resolve_body_fat_formula(body_fat_formula)
 
         circ_records = sorted(user.circumference_records.all()[:80], key=lambda r: r.recorded_at)
         cal_records = sorted(user.caliper_records.all()[:80], key=lambda r: r.recorded_at)
@@ -1067,11 +1206,32 @@ class ProfileService:
                 cal_values.append(tdee)
 
         fat_labels, fat_values = [], []
-        for record in cal_records:
-            value = self._body_fat_from_caliper(record, age=age, gender=gender)
-            if value is not None:
-                fat_labels.append(jdate(record))
-                fat_values.append(round(float(value), 1))
+        if selected_body_fat_formula == "circumference":
+            for record in circ_records:
+                paired_caliper = self._find_caliper_for_datetime(user, record.recorded_at, caliper_records=cal_records)
+                height = record.height_cm if record.height_cm is not None else user.height_cm
+                value = self._body_fat_from_measurements(
+                    caliper=paired_caliper,
+                    circumference=record,
+                    height_cm=height,
+                    age=age,
+                    gender=gender,
+                    formula=selected_body_fat_formula,
+                )
+                if value is not None:
+                    fat_labels.append(jdate(record))
+                    fat_values.append(round(float(value), 1))
+        else:
+            for record in cal_records:
+                value = self._body_fat_from_caliper(
+                    record,
+                    age=age,
+                    gender=gender,
+                    formula=selected_body_fat_formula,
+                )
+                if value is not None:
+                    fat_labels.append(jdate(record))
+                    fat_values.append(round(float(value), 1))
 
         trend_charts = {
             "weight": {"labels": weight_labels, "values": weight_values},
@@ -1134,8 +1294,15 @@ class ProfileService:
             weight = record.weight_kg or user.weight_kg
             height = record.height_cm or user.height_cm
             bmi = calculate_bmi(weight, height)
-            paired = self._find_caliper_for_datetime(user, record.recorded_at)
-            fat = self._body_fat_from_caliper(paired, age=age, gender=gender) if paired else None
+            paired = self._find_caliper_for_datetime(user, record.recorded_at, caliper_records=cal_records)
+            fat = self._body_fat_from_measurements(
+                caliper=paired,
+                circumference=record,
+                height_cm=height,
+                age=age,
+                gender=gender,
+                formula=selected_body_fat_formula,
+            )
             lean = self._lean_mass_from_user(user, fat) if fat is not None else None
             history_rows.append(
                 {

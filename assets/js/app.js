@@ -1,5 +1,5 @@
 function resetSubmitLoadingStates(root) {
-    var scope = root || document;
+    var scope = root && typeof root.querySelectorAll === "function" ? root : document;
     scope.querySelectorAll(".is-loading").forEach(function (button) {
         button.classList.remove("is-loading");
         button.removeAttribute("aria-busy");

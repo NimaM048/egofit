@@ -62,6 +62,20 @@
                 </span>
                 {{ document_form.file }}
             </label>
+            <label class="admin-upload-field">
+                <span>
+                    <strong>{{ document_form.access_type.label }}</strong>
+                    <small>{% trans 'یکی از دو گزینه را انتخاب کنید؛ پرداخت شده یعنی دانلود رایگان.' %}</small>
+                </span>
+                {{ document_form.access_type }}
+                {% for error in document_form.access_type.errors %}<small class="admin-field-error">{{ error }}</small>{% endfor %}
+            </label>
+            <label class="admin-upload-field">
+                <span><strong>{{ document_form.price.label }}</strong><small>{% trans 'فقط برای فایل پرداخت نشده؛ مبلغ پرداختی کاربر به تومان' %}</small></span>
+                {{ document_form.price }}
+                {% for error in document_form.price.errors %}<small class="admin-field-error">{{ error }}</small>{% endfor %}
+            </label>
+            {% for field in document_form %}{% if field.name != 'access_type' and field.name != 'price' and field.errors %}<div class="admin-form-errors">{% for error in field.errors %}<p>{{ error }}</p>{% endfor %}</div>{% endif %}{% endfor %}
             {% if document_form.non_field_errors %}
                 <div class="admin-form-errors">
                     {% for error in document_form.non_field_errors %}
@@ -73,4 +87,32 @@
         </form>
     </article>
 </section>
+{% endblock %}
+
+{% block extra_js %}
+    {{ block.super }}
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            var accessOptions = document.querySelectorAll(".admin-access-checkboxes input[type='checkbox']");
+            var priceInput = document.querySelector(".admin-upload-form input[name='price']");
+            if (!accessOptions.length) return;
+            function syncAccessOptions(changed) {
+                accessOptions.forEach(function (option) {
+                    if (option !== changed && changed.checked) option.checked = false;
+                });
+                var paid = Array.prototype.some.call(accessOptions, function (option) {
+                    return option.checked && option.value === "unpaid";
+                });
+                if (priceInput) {
+                    priceInput.disabled = !paid;
+                    priceInput.required = paid;
+                    if (!paid) priceInput.value = "0";
+                }
+            }
+            accessOptions.forEach(function (option) {
+                option.addEventListener("change", function () { syncAccessOptions(option); });
+                if (option.checked) syncAccessOptions(option);
+            });
+        });
+    </script>
 {% endblock %}

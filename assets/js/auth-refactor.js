@@ -103,6 +103,8 @@ function initOtpTimers() {
         });
     }
 
+    let timerId = null;
+
     function render() {
         if (expiryValue) {
             expiryValue.textContent = formatCountdown(expiresIn);
@@ -119,13 +121,13 @@ function initOtpTimers() {
             }
         }
 
-        if (expiresIn <= 0 && cooldownRemaining <= 0) {
+        if (expiresIn <= 0 && cooldownRemaining <= 0 && timerId !== null) {
             window.clearInterval(timerId);
         }
     }
 
     render();
-    const timerId = window.setInterval(function () {
+    timerId = window.setInterval(function () {
         if (expiresIn > 0) {
             expiresIn -= 1;
         }

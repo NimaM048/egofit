@@ -322,3 +322,24 @@ class ZarinPalProviderTests(SimpleTestCase):
 
         self.assertIn("Merchant", str(exc.exception))
         mocked_post.assert_not_called()
+
+
+class PaymentCallbackUrlTests(SimpleTestCase):
+    @override_settings(
+        SANDBOX=False,
+        LIARA_PUBLIC_BASE_URL="https://egofit.ir",
+    )
+    def test_profile_document_callback_uses_registered_public_domain(self):
+        from django.test import RequestFactory
+
+        from cart.zarinpal import build_payment_callback_url
+
+        request = RequestFactory().get("/accounts/profile_plans/", HTTP_HOST="localhost:8000")
+
+        self.assertEqual(
+            build_payment_callback_url(
+                request,
+                url_name="register:profile_document_verify",
+            ),
+            "https://egofit.ir/accounts/profile_plans/payment/verify/",
+        )

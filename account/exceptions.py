@@ -22,6 +22,14 @@ class SMSProviderException(AccountException):
     """Raised when the SMS provider cannot deliver a message."""
 
 
+class WhatsAppProviderException(AccountException):
+    """Raised when the WhatsApp provider cannot deliver a message."""
+
+
+class WhatsAppUnavailableException(WhatsAppProviderException):
+    """Raised when the recipient number is not reachable on WhatsApp."""
+
+
 class AuthenticationException(AccountException):
     """Raised when authentication or session validation fails."""
 

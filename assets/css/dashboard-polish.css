@@ -15,6 +15,21 @@
 .account-dashboard .site-shell,
 .admin-dashboard .site-shell {
     background: transparent;
+    overflow: visible;
+}
+
+/* Dashboard pages must grow with their content so the browser viewport keeps
+   ownership of vertical scrolling, including long gym-library lists. */
+.account-dashboard .site-content,
+.admin-dashboard .site-content,
+.account-dashboard .account-app,
+.admin-dashboard .admin-app,
+.account-dashboard .account-app__layout,
+.admin-dashboard .admin-app__layout,
+.account-dashboard .account-app__content,
+.admin-dashboard .admin-app__content {
+    min-height: 0;
+    overflow-y: visible;
 }
 
 .dashboard-glass-header {
@@ -154,6 +169,18 @@
 
 .account-dashboard .account-app__sidebar {
     top: 96px;
+}
+
+.account-dashboard .workout-plans-shortcut__cta {
+    min-width: 190px;
+    min-height: 48px;
+    font-weight: 900;
+    letter-spacing: -0.01em;
+}
+
+.account-dashboard .workout-plans-shortcut__cta:focus-visible {
+    outline: 3px solid rgba(204, 251, 241, 0.9);
+    outline-offset: 3px;
 }
 
 .admin-dashboard .admin-app {
@@ -373,6 +400,7 @@
 }
 
 .dark .admin-dashboard .admin-result-card,
+.dark .admin-dashboard .admin-panel-card,
 .dark .admin-dashboard .admin-menu-item,
 .dark .admin-dashboard .admin-stat-grid article,
 .dark .admin-dashboard .admin-data-preview article,
@@ -390,6 +418,27 @@
         rgba(15, 23, 42, 0.72);
     border-color: rgba(148, 163, 184, 0.28);
     box-shadow: 0 18px 44px rgba(0, 0, 0, 0.24);
+    color: #f8fafc;
+}
+
+.dark .admin-dashboard .admin-panel-card {
+    background:
+        linear-gradient(145deg, rgba(125, 211, 252, 0.1), transparent 38%),
+        rgba(15, 23, 42, 0.72);
+    border-color: rgba(148, 163, 184, 0.28);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.24);
+}
+
+.dark .admin-dashboard .admin-panel-card__title,
+.dark .admin-dashboard .admin-panel-card label {
+    color: #f8fafc;
+}
+
+.dark .admin-dashboard .admin-panel-card select,
+.dark .admin-dashboard .admin-panel-card input,
+.dark .admin-dashboard .admin-panel-card textarea {
+    background: rgba(2, 6, 23, 0.58);
+    border-color: rgba(148, 163, 184, 0.32);
     color: #f8fafc;
 }
 
@@ -428,6 +477,15 @@
 .dark .account-dashboard input::placeholder,
 .dark .account-dashboard textarea::placeholder {
     color: rgba(203, 213, 225, 0.72);
+}
+
+/* The automatic-programming search field is outside admin-form-grid. */
+.dark .admin-dashboard .admin-program-screen input.admin-input,
+.dark .admin-dashboard .admin-program-screen select.admin-input,
+.dark .admin-dashboard .admin-program-screen textarea.admin-input {
+    background: rgba(2, 6, 23, 0.58) !important;
+    border-color: rgba(148, 163, 184, 0.32) !important;
+    color: #f8fafc !important;
 }
 
 .dark .admin-dashboard .admin-secondary-btn,
@@ -1108,6 +1166,27 @@ html:not(.dark) .account-dashboard .secondary-action {
     font-size: 0.85rem;
     font-weight: 800;
 }
+.analysis-formula-picker {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 0 0 10px;
+}
+.analysis-formula-picker__label {
+    font-size: 0.8rem;
+    font-weight: 800;
+}
+.analysis-formula-picker .analysis-trend-select {
+    min-width: 220px;
+}
+.analysis-table__formula {
+    display: block;
+    margin-top: 3px;
+    color: var(--account-muted, #6b7280);
+    font-size: 0.7rem;
+    font-weight: 700;
+}
 .analysis-datepicker .analysis-trend-select {
     flex: 1 1 160px;
     min-width: 150px;
@@ -1189,6 +1268,53 @@ html:not(.dark) .account-dashboard .secondary-action {
 .analysis-result-tile--danger .analysis-result-tile__status {
     background: rgba(220, 38, 38, 0.14);
 }
+
+/* --- Nutrition targets --------------------------------------------------- */
+.analysis-nutrition-panel {
+    display: grid;
+    gap: 16px;
+    padding: clamp(16px, 3vw, 22px);
+    border: 1px solid rgba(20, 184, 166, 0.2);
+    border-radius: 22px;
+    background: linear-gradient(135deg, rgba(240, 253, 250, 0.96), rgba(239, 246, 255, 0.9));
+    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+}
+.analysis-nutrition-panel__intro {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+.analysis-nutrition-panel__icon {
+    display: grid;
+    flex: 0 0 42px;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 14px;
+    background: #0f766e;
+    color: #fff;
+    font-size: 1.2rem;
+}
+.analysis-kicker {
+    color: #0f766e;
+    font-size: .72rem;
+    font-weight: 900;
+    letter-spacing: .06em;
+}
+.analysis-nutrition-panel h3 { margin: 2px 0 4px; font-size: 1.1rem; font-weight: 900; }
+.analysis-nutrition-panel__intro p { margin: 0; color: var(--account-muted, #6b7280); font-size: .8rem; line-height: 1.8; }
+.analysis-nutrition-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.analysis-nutrition-card { display: grid; align-content: start; gap: 5px; min-width: 0; padding: 14px; border: 1px solid rgba(148,163,184,.2); border-radius: 16px; background: rgba(255,255,255,.86); }
+.analysis-nutrition-card__label { min-height: 2.7em; color: #475569; font-size: .77rem; font-weight: 800; line-height: 1.65; }
+.analysis-nutrition-card strong { color: #0f172a; font-size: clamp(1.45rem, 3vw, 2rem); font-weight: 950; line-height: 1.1; overflow-wrap: anywhere; }
+.analysis-nutrition-card small { color: #64748b; font-size: .7rem; font-weight: 700; }
+.analysis-nutrition-card__hint { margin-top: 5px; color: #64748b; font-size: .7rem; line-height: 1.6; }
+.analysis-nutrition-card--loss { border-top: 3px solid #2563eb; }
+.analysis-nutrition-card--gain { border-top: 3px solid #f59e0b; }
+.analysis-nutrition-card--protein { border-top: 3px solid #0f766e; }
+.analysis-nutrition-note { margin: 0; color: #64748b; font-size: .72rem; line-height: 1.8; }
+@media (max-width: 900px) { .analysis-nutrition-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .analysis-nutrition-panel { padding: 14px; border-radius: 18px; } .analysis-nutrition-panel__intro { gap: 9px; } .analysis-nutrition-panel__icon { flex-basis: 36px; width: 36px; height: 36px; border-radius: 11px; } .analysis-nutrition-grid { grid-template-columns: 1fr 1fr; gap: 8px; } .analysis-nutrition-card { padding: 11px; } .analysis-nutrition-card__label { min-height: 3.8em; font-size: .7rem; } }
 
 /* --- 2. Metric explorer (collapsed dropdown + single live chart) --- */
 .analysis-metric-explorer {
@@ -1557,5 +1683,75 @@ html:not(.dark) .account-dashboard .secondary-action {
     --tile-accent: #fbbf24;
 }
 .dark .account-dashboard .analysis-result-tile--danger {
+    --tile-accent: #f87171;
+}
+
+/* The admin analysis page shares the account dashboard components. */
+.dark .admin-dashboard .admin-analysis-screen {
+    --account-surface: rgba(15, 23, 42, 0.72);
+    --account-muted: #cbd5e1;
+    --account-border: rgba(148, 163, 184, 0.28);
+    --account-shadow: 0 16px 36px rgba(0, 0, 0, 0.4);
+}
+
+.dark .admin-dashboard .admin-analysis-screen .analysis-stat-card,
+.dark .admin-dashboard .admin-analysis-screen .analysis-gauge-card,
+.dark .admin-dashboard .admin-analysis-screen .analysis-metric-explorer,
+.dark .admin-dashboard .admin-analysis-screen .analysis-datepicker,
+.dark .admin-dashboard .admin-analysis-screen .analysis-result-tile,
+.dark .admin-dashboard .admin-analysis-screen .analysis-chart-box,
+.dark .admin-dashboard .admin-analysis-screen .analysis-table-card,
+.dark .admin-dashboard .admin-analysis-screen .analysis-trend-select {
+    background:
+        linear-gradient(145deg, rgba(125, 211, 252, 0.1), transparent 38%),
+        rgba(15, 23, 42, 0.72);
+    border-color: rgba(148, 163, 184, 0.28);
+    color: #f8fafc;
+}
+
+.dark .admin-dashboard .admin-analysis-screen .analysis-stat-card__label,
+.dark .admin-dashboard .admin-analysis-screen .analysis-stat-card__unit,
+.dark .admin-dashboard .admin-analysis-screen .analysis-gauge-card__title,
+.dark .admin-dashboard .admin-analysis-screen .analysis-gauge-bar__labs,
+.dark .admin-dashboard .admin-analysis-screen .analysis-chart-box > span,
+.dark .admin-dashboard .admin-analysis-screen .analysis-table thead th,
+.dark .admin-dashboard .admin-analysis-screen .analysis-result-tile__label,
+.dark .admin-dashboard .admin-analysis-screen .analysis-result-tile__value small,
+.dark .admin-dashboard .admin-analysis-screen .analysis-metric-explorer__empty {
+    color: #cbd5e1;
+}
+
+.dark .admin-dashboard .admin-analysis-screen .analysis-explorer-head strong,
+.dark .admin-dashboard .admin-analysis-screen .analysis-table-card h3 {
+    color: #f8fafc;
+}
+
+.dark .admin-dashboard .admin-analysis-screen .analysis-table th,
+.dark .admin-dashboard .admin-analysis-screen .analysis-table td {
+    border-color: rgba(148, 163, 184, 0.22);
+}
+
+.dark .admin-dashboard .admin-analysis-screen .analysis-trend-select {
+    color: #f8fafc;
+}
+
+.dark .admin-dashboard .admin-analysis-screen .analysis-gauge-card__cat {
+    color: #93b4ff;
+}
+
+.dark .admin-dashboard .admin-analysis-screen .analysis-result-tile--neutral .analysis-result-tile__status {
+    background: rgba(96, 165, 250, 0.18);
+    color: #bfdbfe;
+}
+
+.dark .admin-dashboard .admin-analysis-screen .analysis-result-tile--good {
+    --tile-accent: #4ade80;
+}
+
+.dark .admin-dashboard .admin-analysis-screen .analysis-result-tile--warn {
+    --tile-accent: #fbbf24;
+}
+
+.dark .admin-dashboard .admin-analysis-screen .analysis-result-tile--danger {
     --tile-accent: #f87171;
 }

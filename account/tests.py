@@ -9,15 +9,22 @@ from account.domain.body_composition.calculator import (
     CircumferenceMeasures,
     build_body_composition_snapshot,
     calculate_body_fat_from_caliper,
+    calculate_body_fat_from_circumference_navy,
     calculate_bmi,
     calculate_bmr_mifflin_st_jeor,
+    calculate_calories_for_weight_gain,
+    calculate_calories_for_weight_loss,
+    calculate_lean_mass,
+    calculate_protein_range,
     calculate_whr,
+    calculate_whtr,
+    calculate_whtr_status,
 )
 from account.admin import NotificationAdminForm
 from account.models import Notification, Otp, User
 from account.services import ProfileService, send_notification_sms_broadcast
 from cart.models import Order, OrderItem
-from home.models import Category, CommentSectionModel, SeriesModel, UserCourse
+from home.models import Category, Comment, CommentSectionModel, Reply, SeriesModel, UserCourse
 
 
 class AccountAccessTests(TestCase):
@@ -58,6 +65,15 @@ class AccountAccessTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "auth-mobile-screen")
+
+    @patch("account.services.SmsService.send_verification_sms", return_value=True)
+    def test_create_and_send_otp_sends_without_waiting_for_task_worker(self, mocked_send_sms):
+        from account.services import create_and_send_otp
+
+        token = create_and_send_otp("09121112233")
+
+        otp = Otp.objects.get(token=token)
+        mocked_send_sms.assert_called_once_with(otp.phone, otp.code)
 
     @patch("account.views.create_and_send_otp", return_value="login-token")
     def test_phone_login_accepts_persian_digits(self, mocked_send_otp):
@@ -435,6 +451,57 @@ class AdminPortalTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "analysis-chart-card")
 
+    def test_analysis_body_fat_formula_selection_updates_history_table(self):
+        from account.models import BodyCircumferenceMeasurement, CaliperMeasurement
+
+        self.client_user.height_cm = 180
+        self.client_user.weight_kg = 78
+        self.client_user.gender = "male"
+        self.client_user.birth_date_jalali = "1370/02/12"
+        self.client_user.save(update_fields=["height_cm", "weight_kg", "gender", "birth_date_jalali"])
+        BodyCircumferenceMeasurement.objects.create(
+            user=self.client_user,
+            measured_at_jalali="1404/01/10",
+            height_cm=180,
+            weight_kg=78,
+            waist_cm=82,
+            neck_cm=38,
+            hips_cm=96,
+        )
+        CaliperMeasurement.objects.create(
+            user=self.client_user,
+            measured_at_jalali="1404/01/10",
+            chest_mm=10,
+            axilla_mm=12,
+            triceps_mm=18,
+            subscapular_mm=14,
+            abdominal_mm=20,
+            suprailiac_mm=16,
+            thigh_mm=22,
+        )
+
+        service = ProfileService()
+        context = service.get_analysis_context(
+            self.client_user,
+            circ_date="1404/01/10",
+            body_fat_formula="jp4",
+            use_full_chart_range=True,
+        )
+        dashboard = service.get_analysis_dashboard_data(self.client_user, body_fat_formula="jp4")
+
+        self.assertEqual(context["analysis_selected_body_fat_formula"], "jp4")
+        self.assertEqual(context["analysis_formula_used"], "Jackson-Pollock 4-site")
+        self.assertEqual(dashboard["analysis_history_rows"][0]["fat_percent"], context["analysis_result_tiles"][0]["value"])
+
+        self.client.force_login(self.admin)
+        response = self.client.get(
+            reverse("register:admin_user_analysis", args=[self.client_user.pk]),
+            {"circ_date": "1404/01/10", "body_fat_formula": "jp4"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="body_fat_formula"')
+        self.assertContains(response, "Jackson-Pollock 4-site")
+
     def test_analysis_filter_by_metric(self):
         self.client_user.height_cm = 180
         self.client_user.weight_kg = 78
@@ -535,6 +602,23 @@ class ExerciseLookupCrudTests(TestCase):
         self.client.force_login(self.admin)
         response = self.client.get(reverse("register:admin_lookup_list", args=["not-a-real-key"]))
         self.assertEqual(response.status_code, 404)
+
+    def test_gym_library_list_shows_twenty_items_and_supports_page_size(self):
+        from account.models import Muscle
+
+        Muscle.objects.bulk_create([Muscle(name=f"عضله {index:02d}") for index in range(25)])
+        self.client.force_login(self.admin)
+
+        response = self.client.get(reverse("register:admin_muscle_list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["is_paginated"])
+        self.assertEqual(len(response.context["muscles"]), 20)
+        self.assertEqual(response.context["page_size"], 20)
+
+        response = self.client.get(reverse("register:admin_muscle_list"), {"page_size": 10, "page": 2})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["muscles"]), 10)
+        self.assertEqual(response.context["page_size"], 10)
 
     def test_lookup_add_creates_row(self):
         from account.models import ExerciseEquipmentType
@@ -1001,17 +1085,34 @@ class BirthdaySmsTests(TestCase):
             fullname="birthday_client",
             birth_date_jalali=f"1370/{today.month:02d}/{today.day:02d}",
         )
+        self.client_user = User.objects.create(
+            phone="09121110013",
+            fullname="client_user",
+        )
 
     @patch("account.services.admin_portal_service.SmsService.send_personalized_bulk_sms", return_value=True)
-    def test_dashboard_load_sends_birthday_sms_once(self, mocked_send):
+    def test_dashboard_load_does_not_send_birthday_sms(self, mocked_send):
         from account.models import BirthdaySmsLog
 
         self.client.force_login(self.admin)
         self.client.get(reverse("register:admin_search"))
+        mocked_send.assert_not_called()
+        self.assertEqual(BirthdaySmsLog.objects.filter(user=self.birthday_user).count(), 0)
+
+        self.client.get(reverse("register:admin_search"))
+        mocked_send.assert_not_called()
+
+    @patch("account.services.admin_portal_service.SmsService.send_personalized_bulk_sms", return_value=True)
+    def test_birthday_sms_service_sends_once(self, mocked_send):
+        from account.models import BirthdaySmsLog
+        from account.services.admin_portal_service import AdminPortalService
+
+        service = AdminPortalService()
+        service.send_pending_birthday_sms()
         self.assertEqual(mocked_send.call_count, 1)
         self.assertEqual(BirthdaySmsLog.objects.filter(user=self.birthday_user).count(), 1)
 
-        self.client.get(reverse("register:admin_search"))
+        service.send_pending_birthday_sms()
         self.assertEqual(mocked_send.call_count, 1)
 
     @patch("account.services.admin_portal_service.SmsService.send_personalized_bulk_sms", return_value=True)
@@ -1021,6 +1122,67 @@ class BirthdaySmsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "birthday_client")
 
+    def test_notifications_view_lists_pending_opinions_and_course_comments(self):
+        category = Category.objects.create(title="Fitness", slug="fitness")
+        series = SeriesModel.objects.create(
+            title="تمرین پایه",
+            image=SimpleUploadedFile("course.png", b"filecontent", content_type="image/png"),
+            language_kinds=category,
+            author=self.admin,
+        )
+        Comment.objects.create(
+            name="مریم رضایی",
+            email="maryam@example.com",
+            comment="این یک نظر آزمایشی معتبر است.",
+        )
+        CommentSectionModel.objects.create(series=series, user=self.client_user, text="دیدگاه آزمایشی دوره")
+
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse("register:admin_notifications"))
+
+        self.assertContains(response, "مریم رضایی")
+        self.assertContains(response, "دیدگاه آزمایشی دوره")
+
+    def test_admin_can_approve_and_respond_to_opinion(self):
+        opinion = Comment.objects.create(
+            name="مریم رضایی",
+            email="maryam@example.com",
+            comment="این یک نظر آزمایشی معتبر است.",
+        )
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            reverse("register:admin_comment_moderate"),
+            {"kind": "opinion", "object_id": opinion.pk, "action": "approve", "response": "ممنون از نظر شما."},
+        )
+
+        self.assertRedirects(response, reverse("register:admin_notifications"))
+        opinion.refresh_from_db()
+        self.assertEqual(opinion.publication_status, Comment.PublicationStatus.APPROVED)
+        self.assertTrue(opinion.is_active)
+        self.assertEqual(opinion.admin_response, "ممنون از نظر شما.")
+
+    def test_admin_can_reject_and_respond_to_course_comment(self):
+        category = Category.objects.create(title="Fitness", slug="fitness")
+        series = SeriesModel.objects.create(
+            title="تمرین پایه",
+            image=SimpleUploadedFile("course.png", b"filecontent", content_type="image/png"),
+            language_kinds=category,
+            author=self.admin,
+        )
+        comment = CommentSectionModel.objects.create(series=series, user=self.client_user, text="دیدگاه آزمایشی دوره")
+
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            reverse("register:admin_comment_moderate"),
+            {"kind": "comment", "object_id": comment.pk, "action": "reject", "response": "لطفاً متن را اصلاح کنید."},
+        )
+
+        self.assertRedirects(response, reverse("register:admin_notifications"))
+        comment.refresh_from_db()
+        self.assertEqual(comment.publication_status, CommentSectionModel.PublicationStatus.REJECTED)
+        self.assertFalse(comment.is_active)
+        self.assertTrue(Reply.objects.filter(comment=comment, user=self.admin, text="لطفاً متن را اصلاح کنید.", is_active=True).exists())
+
 
 class BodyCompositionCalculatorTests(TestCase):
     def test_calculate_bmi(self):
@@ -1028,6 +1190,17 @@ class BodyCompositionCalculatorTests(TestCase):
 
     def test_calculate_whr(self):
         self.assertEqual(calculate_whr(82.0, 98.0), 0.84)
+
+    def test_invalid_measurements_are_rejected(self):
+        self.assertIsNone(calculate_bmi(-80, 180))
+        self.assertIsNone(calculate_whr(-82, 98))
+        self.assertIsNone(calculate_whtr(-82, 180))
+        self.assertIsNone(calculate_lean_mass(80, 101))
+
+    def test_whtr_uses_nice_style_bands(self):
+        self.assertEqual(str(calculate_whtr_status(0.49)), "نرمال")
+        self.assertEqual(str(calculate_whtr_status(0.50)), "نسبتا نامطلوب")
+        self.assertEqual(str(calculate_whtr_status(0.60)), "پرخطر")
 
     def test_mifflin_st_jeor_male(self):
         bmr = calculate_bmr_mifflin_st_jeor(weight_kg=80, height_cm=180, age=30, gender="male")
@@ -1064,6 +1237,51 @@ class BodyCompositionCalculatorTests(TestCase):
         self.assertEqual(result.formula_name, "Jackson-Pollock 7-site")
         self.assertGreater(result.body_fat_percent, 10)
 
+    def test_jackson_pollock_4_site_uses_four_site_percent_equation(self):
+        skinfolds = CaliperSkinfolds(
+            abdominal_mm=22.0,
+            triceps_mm=12.0,
+            thigh_mm=16.0,
+            suprailiac_mm=18.0,
+        )
+        result = calculate_body_fat_from_caliper(
+            skinfolds,
+            age=30,
+            gender="male",
+            formula="jp4",
+        )
+        self.assertIsNotNone(result)
+        self.assertEqual(result.formula_name, "Jackson-Pollock 4-site")
+        self.assertIsNone(result.body_density)
+        self.assertAlmostEqual(result.body_fat_percent, 16.6, places=1)
+
+    def test_auto_caliper_selection_includes_four_site(self):
+        skinfolds = CaliperSkinfolds(
+            abdominal_mm=22.0,
+            triceps_mm=12.0,
+            thigh_mm=16.0,
+            suprailiac_mm=18.0,
+        )
+        result = calculate_body_fat_from_caliper(skinfolds, age=30, gender="male")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.formula_name, "Jackson-Pollock 4-site")
+
+    def test_navy_formula_converts_metric_inputs_to_inches(self):
+        result = calculate_body_fat_from_circumference_navy(
+            CircumferenceMeasures(abdomen_cm=82.0, neck_cm=38.0),
+            height_cm=180,
+            gender="male",
+        )
+        self.assertIsNotNone(result)
+        self.assertAlmostEqual(result.body_fat_percent, 13.7, places=1)
+        self.assertIsNone(result.body_density)
+
+    def test_protein_and_calorie_targets_are_explicit(self):
+        self.assertEqual(calculate_protein_range(80, activity_level="sedentary"), (64, 80))
+        self.assertEqual(calculate_protein_range(80, activity_level="active"), (112, 160))
+        self.assertEqual(calculate_calories_for_weight_loss(2500), 1900)
+        self.assertEqual(calculate_calories_for_weight_gain(2500), 2800)
+
     def test_body_fat_requires_gender(self):
         skinfolds = CaliperSkinfolds(abdominal_mm=20.0, suprailiac_mm=18.0, thigh_mm=16.0)
         self.assertIsNone(calculate_body_fat_from_caliper(skinfolds, age=30, gender=None))
@@ -1084,6 +1302,10 @@ class BodyCompositionCalculatorTests(TestCase):
         self.assertIsNotNone(snapshot.body_fat_percent)
         self.assertIsNotNone(snapshot.lean_mass_kg)
         self.assertIsNotNone(snapshot.tdee)
+        self.assertEqual(snapshot.calories_for_loss, snapshot.tdee - 600)
+        self.assertEqual(snapshot.calories_for_gain, snapshot.tdee + 300)
+        self.assertEqual(snapshot.protein_min_g, 64)
+        self.assertEqual(snapshot.protein_max_g, 80)
         self.assertEqual(snapshot.whr, 0.84)
         self.assertEqual(snapshot.bmi, 24.7)
 

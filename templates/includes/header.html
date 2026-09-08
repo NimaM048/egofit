@@ -1,7 +1,7 @@
 {% load static %}
 {% load my_tags %}
 {% load i18n %}
-<header class="modern-header" x-data="{ offcanvasOpen: false }" x-effect="document.body.classList.toggle('overflow-hidden', offcanvasOpen)" @keydown.escape.window="offcanvasOpen = false">
+<header class="modern-header" x-data="mobileMenu" @keydown.escape.window="offcanvasOpen = false">
     <div class="shell-container">
         <div class="modern-header__stack">
         <div class="modern-header__panel modern-surface">
@@ -73,6 +73,9 @@
                                 </svg>
                             </a>
                         </div>
+                        <a href="{% url 'home:workout_library' %}" class="modern-nav-link modern-nav-link--library">
+                            {% trans 'کتابخانه تمرینات' %}
+                        </a>
                     </div>
 
                     {% trans 'جستجو در دوره‌ها و مقالات' as default_search_label %}
@@ -279,7 +282,7 @@
         </div>
     </div>
 
-    <div x-cloak class="modern-offcanvas">
+    <div x-cloak x-show="offcanvasOpen" class="modern-offcanvas">
         <div id="site-mobile-menu"
              class="fixed inset-y-0 right-0 xs:w-80 w-72 h-screen modern-offcanvas__panel rounded-l-3xl overflow-y-auto transition-transform z-50"
              x-bind:class="offcanvasOpen ? '!translate-x-0' : 'translate-x-full'"
@@ -319,6 +322,7 @@
                         </svg>
                     </button>
                 </form>
+                <a href="{% url 'home:workout_library' %}" class="pill-link">{% trans 'کتابخانه تمرینات' %}</a>
 
                 <div class="section-card modern-surface">
                     <div class="flex items-center justify-between gap-3">

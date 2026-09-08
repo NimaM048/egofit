@@ -9,10 +9,10 @@ from cart.providers.zarinpal_provider import ZarinPalPaymentProvider
 from cart.services.payment_service import PaymentService
 
 
-def build_payment_callback_url(request) -> str:
+def build_payment_callback_url(request, url_name: str = "cart:verify") -> str:
     from django.urls import reverse
 
-    path = reverse("cart:verify")
+    path = reverse(url_name)
     if settings.SANDBOX:
         return request.build_absolute_uri(path)
 

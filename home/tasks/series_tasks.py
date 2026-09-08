@@ -1,14 +1,6 @@
 from __future__ import annotations
 
-try:
-    from celery import shared_task
-except Exception:  # pragma: no cover - fallback when Celery is unavailable
-    def shared_task(*task_args, **task_kwargs):
-        def decorator(func):
-            func.delay = func
-            return func
-
-        return decorator
+from sport_shop.task_queue import shared_task
 
 from home.repositories.series_repository import SeriesRepository
 

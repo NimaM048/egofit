@@ -59,6 +59,14 @@
             </a>
         </li>
         <li>
+            <a href="{% url 'register:admin_automatic_programming' %}" class="admin-sidebar-nav__item {% if active_section == 'automatic' %}is-active{% endif %}">
+                <span class="admin-sidebar-nav__icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v18M3 12h18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M7 7l10 10M17 7L7 17" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".55"/></svg>
+                </span>
+                <span>{% trans 'برنامه‌ریزی خودکار' %}</span>
+            </a>
+        </li>
+        <li>
             <a href="{% url 'register:admin_notifications' %}" class="admin-sidebar-nav__item {% if active_section == 'notifications' %}is-active{% endif %}">
                 <span class="admin-sidebar-nav__icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" fill="none"><path d="M12 4C9.8 4 8 5.8 8 8V11.2C8 12.3 7.6 13.3 6.9 14.1L6 15.2C5.6 15.7 6 16.5 6.6 16.5H17.4C18 16.5 18.4 15.7 18 15.2L17.1 14.1C16.4 13.3 16 12.3 16 11.2V8C16 5.8 14.2 4 12 4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 19C10.3 19.6 11.1 20 12 20C12.9 20 13.7 19.6 14 19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>

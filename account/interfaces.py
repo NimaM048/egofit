@@ -21,3 +21,13 @@ class BaseSMSProvider(Protocol):
 
     def send_personalized_bulk_sms(self, recipients: Iterable[PersonalizedSmsMessage]) -> bool:
         ...
+
+
+@runtime_checkable
+class BaseWhatsAppProvider(Protocol):
+    def is_configured(self) -> bool:
+        ...
+
+    def send_text_message(self, phone: str, message: str) -> bool:
+        ...
+

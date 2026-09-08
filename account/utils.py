@@ -28,6 +28,18 @@ def normalize_phone_number(value: str | None) -> str:
     return normalized.strip()
 
 
+def to_international_phone(value: str | None) -> str:
+    normalized = normalize_phone_number(value)
+    if len(normalized) == 11 and normalized.startswith("0"):
+        return "98" + normalized[1:]
+    return normalized
+
+
+def is_valid_mobile_phone(value: str | None) -> bool:
+    normalized = normalize_phone_number(value)
+    return len(normalized) == 11 and normalized.isdigit() and normalized.startswith("09")
+
+
 def iter_chunks(values: Iterable[T], chunk_size: int) -> Iterator[list[T]]:
     iterator = iter(values)
     while True:

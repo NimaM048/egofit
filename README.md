@@ -9,6 +9,7 @@ EgoFit is a Django-based fitness and coaching platform for managing user profile
 - Coach request workflow with measurements and attachments
 - Admin portal for user management, measurements, notifications, and content lookup data
 - Persian-first UI with bilingual support through `django-modeltranslation`
+- Versioned client API under `/api/v1/` with bearer authentication and protected user workflows
 
 ## Tech Stack
 
@@ -55,6 +56,12 @@ python manage.py migrate
 python manage.py runserver
 ```
 
+For background jobs in production, run a Celery worker alongside Django:
+
+```bash
+celery -A sport_shop worker --loglevel=INFO
+```
+
 ## Environment Variables
 
 Common variables used by the project:
@@ -65,6 +72,10 @@ Common variables used by the project:
 - `DJANGO_CSRF_TRUSTED_ORIGINS`
 - `DJANGO_TIME_ZONE`
 - `DJANGO_USE_SQLITE`
+- `DJANGO_AUTO_MIGRATE_ON_STARTUP`
+- `DJANGO_AUTO_COLLECTSTATIC_ON_STARTUP`
+- `DJANGO_TASK_QUEUE_REQUIRED`
+- `DJANGO_TASKS_RUN_INLINE`
 - `DJANGO_DB_NAME`
 - `DJANGO_DB_USER`
 - `DJANGO_DB_PASSWORD`
@@ -75,6 +86,12 @@ Common variables used by the project:
 - `ZARINPAL_MERCHANT_ID`
 - `ZARINPAL_SANDBOX`
 - `LIARA_PUBLIC_BASE_URL`
+- `REDIS_URL`
+- `CELERY_BROKER_URL`
+- `CELERY_RESULT_BACKEND`
+- `API_ACCESS_TOKEN_TTL_MINUTES`
+- `API_REFRESH_TOKEN_TTL_DAYS`
+- `API_CORS_ALLOWED_ORIGINS`
 
 The local `.env` file should never be committed.
 

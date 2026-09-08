@@ -11,12 +11,14 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from account.constants import GLOBAL_NOTIFICATION_CACHE_KEY
+from account.admin_forms import CorrectiveExerciseForm
 from account.models import (
     BodyCircumferenceMeasurement,
     CaliperMeasurement,
     ClientDocument,
     ClientMedia,
     CoachRequest,
+    CorrectiveExercise,
     Exercise,
     ExerciseBodyPart,
     ExerciseDifficultyLevel,
@@ -29,7 +31,16 @@ from account.models import (
     Otp,
     User,
     UserSession,
+    WorkoutPerformanceRecord,
+    WorkoutProgram,
+    WorkoutProgramPayment,
+    WorkoutProgramCorrective,
+    WorkoutProgramDay,
+    WorkoutProgramExercise,
+    WorkoutProgramFeedback,
 )
+from account.services.notification_service import NotificationService
+from account.tasks.dispatch import dispatch_task
 from account.tasks.sms_tasks import send_notification_sms_broadcast as send_notification_sms_broadcast_task
 from account.validators import validate_strong_password
 
@@ -321,6 +332,11 @@ class ClientMediaAdmin(admin.ModelAdmin):
     search_fields = ("user__fullname", "user__phone", "uploaded_by__fullname")
     ordering = ("-uploaded_at",)
 
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        if not change:
+            NotificationService.schedule_media_uploaded(obj)
+
 
 class NotificationAdminForm(forms.ModelForm):
     class Meta:
@@ -396,7 +412,7 @@ class NotificationAdmin(admin.ModelAdmin):
 
         def _send_sms():
             try:
-                send_notification_sms_broadcast_task.delay(obj.pk)
+                dispatch_task(send_notification_sms_broadcast_task, obj.pk)
             except Exception as exc:
                 self.message_user(
                     request,
@@ -415,10 +431,16 @@ class NotificationAdmin(admin.ModelAdmin):
 
 @admin.register(ClientDocument)
 class ClientDocumentAdmin(admin.ModelAdmin):
-    list_display = ("title", "user", "uploaded_by", "uploaded_at")
+    list_display = ("title", "user", "uploaded_by", "uploaded_at", "requires_payment", "price")
     list_select_related = ("user", "uploaded_by")
     search_fields = ("title", "user__fullname", "user__phone")
     ordering = ("-uploaded_at",)
+    list_filter = ("requires_payment",)
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        if not change:
+            NotificationService.schedule_document_uploaded(obj)
 
 
 @admin.register(CoachRequest)
@@ -428,6 +450,126 @@ class CoachRequestAdmin(admin.ModelAdmin):
     list_filter = ("status", "wants_diet", "wants_workout")
     search_fields = ("user__fullname", "user__phone")
     ordering = ("-created_at",)
+
+
+class WorkoutProgramDayInline(admin.TabularInline):
+    model = WorkoutProgramDay
+    extra = 0
+    fields = ("order", "name", "notes")
+    ordering = ("order",)
+
+
+class WorkoutProgramCorrectiveInline(admin.TabularInline):
+    model = WorkoutProgramCorrective
+    extra = 0
+    fields = ("order", "phase", "corrective_exercise", "sets", "reps", "note")
+    ordering = ("phase", "order")
+
+
+class WorkoutProgramFeedbackInline(admin.StackedInline):
+    model = WorkoutProgramFeedback
+    extra = 0
+    fields = ("day", "difficulty", "submitted_at")
+    readonly_fields = ("submitted_at",)
+
+
+@admin.register(WorkoutProgram)
+class WorkoutProgramAdmin(admin.ModelAdmin):
+    list_display = (
+        "title",
+        "user",
+        "prescribed_by",
+        "start_date",
+        "end_date",
+        "is_published",
+        "requires_payment",
+        "price",
+        "difficulty_score",
+        "updated_at",
+    )
+    list_select_related = ("user", "prescribed_by")
+    list_filter = ("is_published", "requires_payment", "start_date", "end_date")
+    search_fields = ("title", "user__fullname", "user__phone", "prescribed_by__fullname")
+    ordering = ("-updated_at",)
+    inlines = (WorkoutProgramDayInline, WorkoutProgramCorrectiveInline, WorkoutProgramFeedbackInline)
+
+    def save_model(self, request, obj, form, change):
+        was_published = False
+        if change and obj.pk:
+            was_published = bool(
+                WorkoutProgram.objects.filter(pk=obj.pk).values_list("is_published", flat=True).first()
+            )
+        super().save_model(request, obj, form, change)
+        if obj.is_published and (not change or not was_published):
+            NotificationService.schedule_program_registered(obj)
+
+    @admin.display(description=_("دشواری برنامه"))
+    def difficulty_score(self, obj):
+        feedback = obj.difficulty_feedback.order_by("-submitted_at").first()
+        return f"{feedback.difficulty}/10" if feedback and feedback.difficulty is not None else "—"
+
+
+@admin.register(WorkoutProgramPayment)
+class WorkoutProgramPaymentAdmin(admin.ModelAdmin):
+    list_display = ("program", "user", "amount", "status", "authority", "created_at", "paid_at")
+    list_select_related = ("program", "user")
+    list_filter = ("status", "created_at", "paid_at")
+    search_fields = ("program__title", "user__fullname", "user__phone", "authority", "ref_id")
+    readonly_fields = ("created_at", "paid_at", "authority", "ref_id")
+    ordering = ("-created_at",)
+
+
+@admin.register(WorkoutProgramDay)
+class WorkoutProgramDayAdmin(admin.ModelAdmin):
+    list_display = ("name", "program", "order")
+    list_select_related = ("program",)
+    search_fields = ("name", "program__title", "program__user__fullname")
+    ordering = ("program", "order")
+
+
+@admin.register(WorkoutProgramExercise)
+class WorkoutProgramExerciseAdmin(admin.ModelAdmin):
+    list_display = ("exercise", "superset_exercise", "third_exercise", "day", "sets", "reps", "rest", "order")
+    list_select_related = ("day", "day__program", "exercise", "superset_exercise", "third_exercise")
+    search_fields = (
+        "exercise__name",
+        "superset_exercise__name",
+        "third_exercise__name",
+        "day__program__title",
+        "day__program__user__fullname",
+    )
+    ordering = ("day", "order")
+
+
+@admin.register(WorkoutProgramCorrective)
+class WorkoutProgramCorrectiveAdmin(admin.ModelAdmin):
+    list_display = ("corrective_exercise", "program", "phase", "sets", "reps", "order")
+    list_select_related = ("program", "corrective_exercise")
+    list_filter = ("phase",)
+    search_fields = ("corrective_exercise__name", "program__title", "program__user__fullname")
+    ordering = ("program", "phase", "order")
+
+
+@admin.register(WorkoutPerformanceRecord)
+class WorkoutPerformanceRecordAdmin(admin.ModelAdmin):
+    list_display = (
+        "exercise",
+        "user",
+        "repetitions",
+        "mode",
+        "set_number",
+        "value",
+        "updated_at",
+    )
+    list_select_related = ("user", "exercise", "program")
+    list_filter = ("mode", "updated_at")
+    search_fields = (
+        "exercise__name",
+        "user__fullname",
+        "user__phone",
+        "program__title",
+    )
+    ordering = ("-updated_at",)
 
 
 @admin.register(Muscle)
@@ -444,6 +586,20 @@ class ExerciseAdmin(admin.ModelAdmin):
     list_filter = ("body_part", "movement_type", "difficulty_level", "equipment_type")
     search_fields = ("name", "primary_muscle__name")
     ordering = ("name",)
+
+
+@admin.register(CorrectiveExercise)
+class CorrectiveExerciseAdmin(admin.ModelAdmin):
+    form = CorrectiveExerciseForm
+    list_display = ("name", "abnormality_type", "equipment", "media", "video_count")
+    list_select_related = ("abnormality_type", "equipment")
+    list_filter = ("abnormality_type", "equipment")
+    search_fields = ("name", "description", "abnormality_type__name", "equipment__name")
+    ordering = ("name",)
+
+    @admin.display(description=_("تعداد ویدیو"))
+    def video_count(self, obj):
+        return len(obj.video_files)
 
 
 class _LookupModelAdmin(admin.ModelAdmin):

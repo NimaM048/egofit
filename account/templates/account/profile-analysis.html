@@ -83,6 +83,22 @@
         </section>
         {% endif %}
 
+        {% if analysis_body_composition.calories_for_loss or analysis_body_composition.calories_for_gain or analysis_body_composition.protein_min_g or analysis_body_composition.protein_max_g %}
+        <section class="analysis-nutrition-panel" aria-labelledby="analysis-nutrition-title">
+            <div class="analysis-nutrition-panel__intro">
+                <span class="analysis-nutrition-panel__icon" aria-hidden="true">✦</span>
+                <div><span class="analysis-kicker">{% trans 'راهنمای تغذیه' %}</span><h3 id="analysis-nutrition-title">{% trans 'هدف‌های روزانه پیشنهادی' %}</h3><p>{% trans 'این اعداد بر اساس آنالیز فعلی شما تخمین زده شده‌اند و برای شروع برنامه‌ریزی غذایی کاربرد دارند.' %}</p></div>
+            </div>
+            <div class="analysis-nutrition-grid">
+                <article class="analysis-nutrition-card analysis-nutrition-card--loss"><span class="analysis-nutrition-card__label">{% trans 'کالری مورد نیاز برای کاهش وزن' %}</span><strong>{{ analysis_body_composition.calories_for_loss|default:'—' }}</strong><small>{% trans 'کیلوکالری در روز' %}</small><span class="analysis-nutrition-card__hint">{% trans 'کسری کالری پیشنهادی' %}</span></article>
+                <article class="analysis-nutrition-card analysis-nutrition-card--gain"><span class="analysis-nutrition-card__label">{% trans 'کالری مورد نیاز برای افزایش وزن' %}</span><strong>{{ analysis_body_composition.calories_for_gain|default:'—' }}</strong><small>{% trans 'کیلوکالری در روز' %}</small><span class="analysis-nutrition-card__hint">{% trans 'مازاد کالری پیشنهادی' %}</span></article>
+                <article class="analysis-nutrition-card analysis-nutrition-card--protein"><span class="analysis-nutrition-card__label">{% trans 'حداقل پروتئین روزانه' %}</span><strong>{{ analysis_body_composition.protein_min_g|default:'—' }}</strong><small>{% trans 'گرم در روز' %}</small><span class="analysis-nutrition-card__hint">{% trans 'برای حفظ و ساخت عضله' %}</span></article>
+                <article class="analysis-nutrition-card analysis-nutrition-card--protein"><span class="analysis-nutrition-card__label">{% trans 'حداکثر پروتئین روزانه' %}</span><strong>{{ analysis_body_composition.protein_max_g|default:'—' }}</strong><small>{% trans 'گرم در روز' %}</small><span class="analysis-nutrition-card__hint">{% trans 'سقف بازه پیشنهادی' %}</span></article>
+            </div>
+            <p class="analysis-nutrition-note">{% trans 'این مقادیر تخمینی هستند؛ در صورت بیماری، دارو یا شرایط ویژه با متخصص تغذیه مشورت کنید.' %}</p>
+        </section>
+        {% endif %}
+
         {% if analysis_metric_series %}
         <section class="analysis-panel analysis-metric-explorer">
             <div class="analysis-explorer-head">

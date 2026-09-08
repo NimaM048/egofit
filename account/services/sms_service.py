@@ -17,7 +17,7 @@ from account.interfaces import BaseSMSProvider, PersonalizedSmsMessage
 
 logger = logging.getLogger(__name__)
 
-GHASEDAK_SEND_OTP_URL = "https://gateway.ghasedak.me/rest/api/v1/WebService/SendOtpSMS"
+GHASEDAK_SEND_OTP_URL = "https://gateway.ghasedak.me/rest/api/v1/WebService/sendotpsms"
 
 
 def _get_api_key() -> str | None:
@@ -59,16 +59,26 @@ def _is_success_response(response) -> bool:
     if response is None:
         return False
     if hasattr(response, "is_success"):
-        return bool(getattr(response, "is_success"))
+        return _coerce_bool(getattr(response, "is_success"))
     if isinstance(response, dict):
         for key in ("isSuccess", "IsSuccess", "is_success", "Success", "success"):
             if key in response:
-                return bool(response[key])
+                return _coerce_bool(response[key])
         status_code = response.get("statusCode", response.get("status_code"))
-        if isinstance(status_code, int):
+        try:
+            status_code = int(status_code)
+        except (TypeError, ValueError):
+            status_code = None
+        if status_code is not None:
             return 200 <= status_code < 300
         return False
     return bool(response)
+
+
+def _coerce_bool(value) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "ok", "success"}
+    return bool(value)
 
 
 def _extract_error_message(response: Any) -> str:
@@ -147,13 +157,30 @@ class GhasedakSMSProvider(BaseSMSProvider):
         self.line_number = line_number if line_number is not None else _get_line_number()
         self.otp_param = otp_param or _get_otp_param()
 
+    def _require_line_number(self):
+        if not self.line_number:
+            raise SMSProviderException(
+                _("شماره خط ارسال پیامک تنظیم نشده است. مقدار GHASEDAK_LINE_NUMBER را در تنظیمات وارد کنید.")
+            )
+        return self.line_number
+
     def _send_otp_via_rest(self, phone: str, code: str | int, template_name: str) -> bool:
         payload = {
-            "mobile": phone,
-            "clientReferenceId": str(uuid4()),
+            "sendDate": None,
+            "receptors": [
+                {
+                    "mobile": phone,
+                    "clientReferenceId": str(uuid4()),
+                }
+            ],
             "templateName": template_name,
-            "param": self.otp_param,
-            "value": str(code),
+            "inputs": [
+                {
+                    "param": self.otp_param,
+                    "value": str(code),
+                }
+            ],
+            "udh": False,
         }
         _post_ghasedak_json(url=GHASEDAK_SEND_OTP_URL, payload=payload)
         return True
@@ -184,7 +211,7 @@ class GhasedakSMSProvider(BaseSMSProvider):
             return False
         command = ghasedak_sms.SendBulkInput(
             send_date=None,
-            line_number=self.line_number,
+            line_number=self._require_line_number(),
             receptors=recipient_list,
             message=message,
             client_reference_id=None,
@@ -192,7 +219,10 @@ class GhasedakSMSProvider(BaseSMSProvider):
             udh=False,
         )
         response = self.client.send_bulk_sms(command)
-        return _is_success_response(response)
+        if not _is_success_response(response):
+            logger.error("Ghasedak bulk SMS failed: %s", response)
+            raise SMSProviderException(_extract_error_message(response))
+        return True
 
     def send_personalized_bulk_sms(self, recipients: Iterable[PersonalizedSmsMessage]) -> bool:
         recipient_list = [recipient for recipient in recipients if recipient and recipient.receptor and recipient.message]
@@ -202,7 +232,7 @@ class GhasedakSMSProvider(BaseSMSProvider):
         command = ghasedak_sms.SendPairToPairInput(
             items=[
                 ghasedak_sms.SendPairToPairInput.SendPairToPairSmsWebServiceDto(
-                    line_number=self.line_number,
+                    line_number=self._require_line_number(),
                     receptor=recipient.receptor,
                     message=recipient.message,
                     client_reference_id=recipient.client_reference_id,
@@ -212,7 +242,10 @@ class GhasedakSMSProvider(BaseSMSProvider):
             udh=False,
         )
         response = self.client.send_pair_to_pair_sms(command)
-        return _is_success_response(response)
+        if not _is_success_response(response):
+            logger.error("Ghasedak personalized SMS failed: %s", response)
+            raise SMSProviderException(_extract_error_message(response))
+        return True
 
 
 class SmsService:
@@ -232,12 +265,18 @@ class SmsService:
 
     def send_bulk_sms(self, message: str, recipients: Iterable[str]) -> bool:
         try:
-            return self.provider.send_bulk_sms(message, recipients)
+            sent = self.provider.send_bulk_sms(message, recipients)
         except Exception as exc:
             raise SMSProviderException(str(exc)) from exc
+        if not sent:
+            raise SMSProviderException(_("پنل پیامکی پاسخ موفق برای ارسال پیامک برنگرداند."))
+        return True
 
     def send_personalized_bulk_sms(self, recipients: Iterable[PersonalizedSmsMessage]) -> bool:
         try:
-            return self.provider.send_personalized_bulk_sms(recipients)
+            sent = self.provider.send_personalized_bulk_sms(recipients)
         except Exception as exc:
             raise SMSProviderException(str(exc)) from exc
+        if not sent:
+            raise SMSProviderException(_("پنل پیامکی پاسخ موفق برای ارسال گروهی برنگرداند."))
+        return True

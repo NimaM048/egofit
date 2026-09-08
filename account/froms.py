@@ -8,7 +8,16 @@ from django.utils.translation import gettext_lazy as _
 
 from account.models import User
 from account.utils import normalize_digits, normalize_phone_number
-from account.validators import validate_phone_number
+from account.validators import (
+    AUDIO_UPLOAD_TYPES,
+    IMAGE_UPLOAD_TYPES,
+    VIDEO_UPLOAD_TYPES,
+    validate_image_upload,
+    validate_media_upload,
+    validate_pdf_upload,
+    validate_phone_number,
+    validate_upload,
+)
 INPUT_CLASS = (
     "form-input enterprise-input w-full h-11 !ring-0 !ring-offset-0 bg-secondary "
     "border-border focus:border-border rounded-xl text-sm text-foreground px-5"
@@ -112,6 +121,9 @@ class UserEditForm(forms.ModelForm):
         if User.objects.filter(fullname=fullname).exclude(pk=self.instance.pk).exists():
             raise ValidationError(_("این نام کاربری قبلا توسط کاربر دیگری انتخاب شده است."))
         return fullname
+
+    def clean_profile_picture(self):
+        return validate_image_upload(self.cleaned_data.get("profile_picture"))
 
     def save(self, commit=True):
         instance = super().save(commit=False)
@@ -219,20 +231,44 @@ class BloodGroupForm(forms.Form):
 
 
 COACH_REQUEST_MAX_BYTES = 15 * 1024 * 1024
-COACH_REQUEST_ALLOWED_PREFIXES = ("image/", "video/", "audio/")
-COACH_REQUEST_ALLOWED_TYPES = ("application/pdf",)
+COACH_REQUEST_ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png", "webp", "gif", "mp4", "webm", "mov", "m4v", "ogv", "mp3", "wav", "ogg", "m4a", "aac"}
+COACH_REQUEST_ALLOWED_MIME_TYPES = {
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+    "video/mp4",
+    "video/webm",
+    "video/quicktime",
+    "video/x-m4v",
+    "video/ogg",
+    "audio/mpeg",
+    "audio/mp3",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/ogg",
+    "audio/mp4",
+    "audio/x-m4a",
+    "audio/aac",
+}
+COACH_REQUEST_EXTENSION_MIME_TYPES = {
+    "pdf": {"application/pdf"},
+    **{extension: {mime} for extension, mime in IMAGE_UPLOAD_TYPES.items()},
+    **VIDEO_UPLOAD_TYPES,
+    **AUDIO_UPLOAD_TYPES,
+}
 
 
 def validate_coach_request_file(uploaded_file):
-    if uploaded_file.size > COACH_REQUEST_MAX_BYTES:
-        raise ValidationError(_("حجم هر فایل باید حداکثر ۱۵ مگابایت باشد."))
-    content_type = (getattr(uploaded_file, "content_type", "") or "").lower()
-    is_allowed = content_type in COACH_REQUEST_ALLOWED_TYPES or content_type.startswith(
-        COACH_REQUEST_ALLOWED_PREFIXES
+    return validate_upload(
+        uploaded_file,
+        allowed_extensions=COACH_REQUEST_ALLOWED_EXTENSIONS,
+        allowed_content_types=COACH_REQUEST_ALLOWED_MIME_TYPES,
+        extension_content_types=COACH_REQUEST_EXTENSION_MIME_TYPES,
+        max_bytes=COACH_REQUEST_MAX_BYTES,
+        message=_("فقط فایل‌های تصویر، ویدیو، صدا یا PDF مجاز هستند."),
     )
-    if not is_allowed:
-        raise ValidationError(_("فقط فایل‌های تصویر، ویدیو، صدا یا PDF مجاز هستند."))
-    return uploaded_file
 
 
 class CoachRequestForm(forms.ModelForm):

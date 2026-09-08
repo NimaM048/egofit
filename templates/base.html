@@ -2,19 +2,7 @@
 {% load my_tags %}
 {% load i18n %}
 <!DOCTYPE html>
-<html lang="{{ LANGUAGE_CODE }}" dir="{% if LANGUAGE_CODE == 'en' %}ltr{% else %}rtl{% endif %}" x-bind:class="darkMode ? 'dark' : ''" x-data="{
-    darkMode: (() => {
-        const stored = localStorage.getItem('darkMode');
-        if (stored === null) return false;
-        return stored === 'true';
-    })(),
-    init() {
-        this.$watch('darkMode', value => {
-            localStorage.setItem('darkMode', value ? 'true' : 'false');
-            document.documentElement.classList.toggle('dark', value);
-        });
-    }
-}" x-init="init()">
+<html lang="{{ LANGUAGE_CODE }}" dir="{% if LANGUAGE_CODE == 'en' %}ltr{% else %}rtl{% endif %}" x-bind:class="darkMode ? 'dark' : ''" x-data="themeController">
 <head>
     <script>
         (function () {
@@ -22,6 +10,43 @@
             var isDark = stored === 'true';
             document.documentElement.classList.toggle('dark', isDark);
         })();
+    </script>
+    <script>
+        document.addEventListener('alpine:init', function () {
+            Alpine.data('themeController', function () {
+                return {
+                    darkMode: localStorage.getItem('darkMode') === 'true',
+                    init() {
+                        const applyTheme = (value) => {
+                            localStorage.setItem('darkMode', value ? 'true' : 'false');
+                            document.documentElement.classList.toggle('dark', value);
+                        };
+
+                        applyTheme(this.darkMode);
+                        this.$watch('darkMode', applyTheme);
+                    },
+                };
+            });
+
+            Alpine.data('mobileMenu', function () {
+                return {
+                    offcanvasOpen: false,
+                    init() {
+                        const syncBodyScroll = (value) => {
+                            document.body.classList.toggle('overflow-hidden', value);
+                        };
+
+                        syncBodyScroll(this.offcanvasOpen);
+                        this.$watch('offcanvasOpen', syncBodyScroll);
+                        window.addEventListener('resize', () => {
+                            if (window.innerWidth >= 992) {
+                                this.offcanvasOpen = false;
+                            }
+                        });
+                    },
+                };
+            });
+        });
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -31,8 +56,10 @@
     {% else %}
         <link rel="icon" type="image/webp" href="{% static 'images/logoimageego.webp' %}" />
     {% endif %}
-    <link rel="stylesheet" href="{% static 'css/dependencies/swiper-bundle.min.css' %}" />
-    <link rel="stylesheet" href="{% static 'css/dependencies/plyr.min.css' %}" />
+    {% block public_media_css %}
+        <link rel="stylesheet" href="{% static 'css/dependencies/swiper-bundle.min.css' %}" />
+        <link rel="stylesheet" href="{% static 'css/dependencies/plyr.min.css' %}" />
+    {% endblock %}
     <link rel="stylesheet" href="{% static 'css/fonts.css' %}" />
     <link rel="stylesheet" href="{% static 'css/tokens.css' %}" />
     <link rel="stylesheet" href="{% static 'css/app.css' %}" />
@@ -60,8 +87,10 @@
 </div>
 
 <script src="{% static 'js/dependencies/alpinejs.min.js' %}"></script>
-<script src="{% static 'js/dependencies/swiper-bundle.min.js' %}"></script>
-<script src="{% static 'js/dependencies/plyr.min.js' %}"></script>
+{% block public_media_js %}
+    <script src="{% static 'js/dependencies/swiper-bundle.min.js' %}"></script>
+    <script src="{% static 'js/dependencies/plyr.min.js' %}"></script>
+{% endblock %}
 <script src="{% static 'js/app.js' %}"></script>
 {% block public_ui_js %}
     <script src="{% static 'js/home-refactor.js' %}"></script>

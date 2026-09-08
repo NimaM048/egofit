@@ -47,6 +47,10 @@
             <span>{% trans 'آپلود فایل/برنامه برای کاربر' %}</span>
             <span aria-hidden="true">‹</span>
         </a>
+        <a href="{% url 'register:admin_program_list' target_user.id %}" class="admin-menu-item">
+            <span>{% trans 'برنامه بدنسازی' %}</span>
+            <span aria-hidden="true">‹</span>
+        </a>
         <a href="{% url 'register:admin_measurement_history' target_user.id %}" class="admin-menu-item">
             <span>{% trans 'تاریخچه و ویرایش اندازه‌گیری‌ها' %}</span>
             <span aria-hidden="true">‹</span>
@@ -69,6 +73,10 @@
         <article>
             <span>{% trans 'برنامه‌ها' %}</span>
             <strong>{{ latest_documents|length }}</strong>
+        </article>
+        <article>
+            <span>{% trans 'برنامه بدنسازی' %}</span>
+            <strong>{{ latest_workout_programs|length }}</strong>
         </article>
     </section>
 

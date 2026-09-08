@@ -24,11 +24,11 @@ function handleCommentSubmit(event) {
         return;
     }
 
-    if (!textValue) {
+    if (textValue.length < 5) {
         showFloatingMessage(
             form.id === "comment-form"
-                ? "لطفا دیدگاه خود را وارد کنید."
-                : "لطفا پاسخ خود را وارد کنید.",
+                ? "لطفا دیدگاه خود را حداقل در ۵ کاراکتر وارد کنید."
+                : "لطفا پاسخ خود را حداقل در ۵ کاراکتر وارد کنید.",
             "#dc2626"
         );
         return;

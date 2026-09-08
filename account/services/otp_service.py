@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
-from random import randint
+from secrets import randbelow
 from uuid import uuid4
 
 from django.db import transaction
@@ -37,7 +37,7 @@ class OTPService:
     def _generate_code(self) -> int:
         lower_bound = 10 ** (OTP_CODE_LENGTH - 1)
         upper_bound = (10**OTP_CODE_LENGTH) - 1
-        return randint(lower_bound, upper_bound)
+        return lower_bound + randbelow(upper_bound - lower_bound + 1)
 
     def _seconds_since_latest_otp(self, phone: str) -> int | None:
         latest_otp = self.repository.get_latest_for_phone(phone)

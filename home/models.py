@@ -8,10 +8,20 @@ from account.models import User
 
 
 class Comment(models.Model):
+    class PublicationStatus(models.TextChoices):
+        PENDING = "pending", "در انتظار بررسی"
+        APPROVED = "approved", "تایید شده"
+        REJECTED = "rejected", "رد شده"
+
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="contact_comments")
     comment = models.TextField()
     name = models.CharField(max_length=100)
     email = models.EmailField()
     phone = models.CharField(max_length=20, null=True, blank=True)
+    is_active = models.BooleanField(default=False, verbose_name="منتشر شود")
+    admin_response = models.TextField(blank=True, verbose_name="پاسخ مدیر")
+    responded_at = models.DateTimeField(null=True, blank=True, verbose_name="زمان پاسخ")
+    publication_status = models.CharField(max_length=16, choices=PublicationStatus.choices, default=PublicationStatus.PENDING, db_index=True)
 
 
     class Meta:
@@ -305,13 +315,69 @@ class ArticleBlogModel(models.Model):
 
 
 
+class ArticleBlogImage(models.Model):
+    article = models.ForeignKey(
+        ArticleBlogModel,
+        on_delete=models.CASCADE,
+        related_name="gallery_images",
+        verbose_name="مقاله",
+    )
+    image = models.ImageField(upload_to="articles_blog/gallery", verbose_name="تصویر")
+    alt_text = models.CharField(max_length=255, blank=True, verbose_name="متن جایگزین")
+    caption = models.CharField(max_length=255, blank=True, verbose_name="عنوان تصویر")
+    sort_order = models.PositiveIntegerField(default=0, verbose_name="ترتیب نمایش")
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        verbose_name = "تصویر مقاله"
+        verbose_name_plural = "تصاویر مقاله"
+
+    def __str__(self):
+        return self.caption or self.alt_text or f"تصویر مقاله {self.article_id}"
+
+
+class ArticleBlogLink(models.Model):
+    article = models.ForeignKey(
+        ArticleBlogModel,
+        on_delete=models.CASCADE,
+        related_name="article_links",
+        verbose_name="مقاله",
+    )
+    label = models.CharField(max_length=255, verbose_name="متن لینک")
+    url = models.CharField(max_length=500, verbose_name="آدرس لینک")
+    open_in_new_tab = models.BooleanField(
+        default=True,
+        verbose_name="باز شدن در زبانه جدید",
+    )
+    sort_order = models.PositiveIntegerField(default=0, verbose_name="ترتیب نمایش")
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        verbose_name = "لینک مقاله"
+        verbose_name_plural = "لینک‌های مقاله"
+
+    def clean(self):
+        from home.rich_text import validate_article_url
+
+        self.url = validate_article_url(self.url)
+
+    def __str__(self):
+        return self.label
+
+
 class CommentSectionModel(models.Model):
+    class PublicationStatus(models.TextChoices):
+        PENDING = "pending", "در انتظار بررسی"
+        APPROVED = "approved", "تایید شده"
+        REJECTED = "rejected", "رد شده"
+
     series = models.ForeignKey(SeriesModel, on_delete=models.CASCADE, related_name='comments', null=True, blank=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
     text = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     parent = models.ForeignKey('self', null=True, blank=True, on_delete=models.CASCADE, related_name='replies')
     is_active = models.BooleanField(default=False)
+    publication_status = models.CharField(max_length=16, choices=PublicationStatus.choices, default=PublicationStatus.PENDING, db_index=True)
 
     class Meta:
         verbose_name = "کامنت"
@@ -696,11 +762,6 @@ class BlogListingPage(models.Model):
 
     def __str__(self):
         return self.hero_title or "صفحه آرشیو بلاگ"
-
-
-
-
-
 
 
 

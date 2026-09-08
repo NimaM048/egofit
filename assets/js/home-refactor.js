@@ -12,6 +12,7 @@ document.addEventListener("DOMContentLoaded", function () {
     initHeaderMegaMenus();
     initOffcanvasAccessibility();
     initFormSubmitLoading();
+    initWorkoutLibraryModals();
 });
 
 function initSearchSubmitButtons() {
@@ -383,4 +384,127 @@ function initFormSubmitLoading() {
     if (typeof resetSubmitLoadingStates === "function") {
         window.addEventListener("pageshow", resetSubmitLoadingStates);
     }
+}
+
+function initWorkoutLibraryModals() {
+    const triggers = document.querySelectorAll("[data-library-modal-trigger]");
+    if (!triggers.length) {
+        return;
+    }
+
+    const modal = document.createElement("div");
+    modal.className = "workout-library-modal";
+    modal.hidden = true;
+    modal.setAttribute("aria-hidden", "true");
+    modal.innerHTML = `
+        <div class="workout-library-modal__backdrop" data-library-modal-close></div>
+        <section class="workout-library-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="workout-library-modal-title">
+            <header class="workout-library-modal__header">
+                <button class="workout-library-modal__close" type="button" aria-label="بستن" data-library-modal-close>&times;</button>
+            </header>
+            <div class="workout-library-modal__content" id="workout-library-modal-content"></div>
+        </section>
+    `;
+    document.body.appendChild(modal);
+
+    const content = modal.querySelector(".workout-library-modal__content");
+    const dialog = modal.querySelector(".workout-library-modal__dialog");
+    const closeButton = modal.querySelector(".workout-library-modal__close");
+    let lastFocusedElement = null;
+
+    function getFocusableElements() {
+        return Array.from(dialog.querySelectorAll("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])"))
+            .filter(function (element) {
+                return !element.hasAttribute("disabled") && !element.getAttribute("aria-hidden");
+            });
+    }
+
+    function closeModal() {
+        if (modal.hidden) {
+            return;
+        }
+
+        modal.hidden = true;
+        modal.setAttribute("aria-hidden", "true");
+        document.body.classList.remove("workout-library-modal-open");
+        content.replaceChildren();
+
+        if (lastFocusedElement && document.contains(lastFocusedElement)) {
+            lastFocusedElement.focus();
+        }
+        lastFocusedElement = null;
+    }
+
+    function openModal(trigger) {
+        const template = trigger.querySelector(".workout-library-modal-template");
+        if (!template) {
+            return;
+        }
+
+        lastFocusedElement = document.activeElement;
+        content.replaceChildren(template.content.cloneNode(true));
+
+        const heading = content.querySelector("h2");
+        if (heading) {
+            heading.id = "workout-library-modal-title";
+        }
+
+        modal.hidden = false;
+        modal.setAttribute("aria-hidden", "false");
+        document.body.classList.add("workout-library-modal-open");
+        closeButton.focus();
+    }
+
+    document.addEventListener("click", function (event) {
+        const trigger = event.target.closest("[data-library-modal-trigger]");
+        if (trigger) {
+            event.preventDefault();
+            openModal(trigger);
+            return;
+        }
+
+        if (event.target.closest("[data-library-modal-close]")) {
+            closeModal();
+        }
+    });
+
+    document.addEventListener("keydown", function (event) {
+        if (modal.hidden) {
+            const trigger = event.target.closest && event.target.closest("[data-library-modal-trigger]");
+            if (!trigger || (event.key !== "Enter" && event.key !== " ")) {
+                return;
+            }
+
+            event.preventDefault();
+            openModal(trigger);
+            return;
+        }
+
+        if (event.key === "Escape") {
+            event.preventDefault();
+            closeModal();
+            return;
+        }
+
+        if (event.key !== "Tab") {
+            return;
+        }
+
+        const focusableElements = getFocusableElements();
+        if (!focusableElements.length) {
+            event.preventDefault();
+            closeButton.focus();
+            return;
+        }
+
+        const first = focusableElements[0];
+        const last = focusableElements[focusableElements.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    });
 }

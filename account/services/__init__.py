@@ -22,8 +22,11 @@ from account.exceptions import (
     PhoneAlreadyExistsException,
     SessionValidationException,
     SMSProviderException,
+    WhatsAppProviderException,
+    WhatsAppUnavailableException,
 )
 from account.services.sms_service import GhasedakSMSProvider, SmsService, get_sms_client
+from account.services.whatsapp_service import WhatsAppService
 
 __all__ = [
     "AccountException",
@@ -40,6 +43,9 @@ __all__ = [
     "GhasedakSMSProvider",
     "get_sms_client",
     "SmsService",
+    "WhatsAppProviderException",
+    "WhatsAppUnavailableException",
+    "WhatsAppService",
     "create_and_send_otp",
     "get_valid_otp",
     "send_notification_sms_broadcast",
@@ -83,7 +89,9 @@ def __getattr__(name: str):
 def create_and_send_otp(phone: str) -> str:
     from account.services.otp_service import OTPService
 
-    return OTPService().create_otp(phone).token
+    # Login must not depend on a Celery worker being available. Send the OTP
+    # in the request so provider failures are returned to the login form.
+    return OTPService(sms_service=SmsService()).create_otp(phone).token
 
 
 def get_valid_otp(*, token: str, code: int):
