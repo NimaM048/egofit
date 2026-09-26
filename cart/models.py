@@ -108,6 +108,40 @@ class Order(models.Model):
         self.save(update_fields=['status'])
 
 
+class OrderPaymentAttempt(models.Model):
+    """A single payment-provider attempt for an order.
+
+    An order can be sent to the gateway more than once.  Keeping each
+    authority separately is important because a gateway authority is
+    single-use and an old callback must remain traceable after a retry.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        INITIATED = "initiated", "Initiated"
+        PAID = "paid", "Paid"
+        FAILED = "failed", "Failed"
+
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="payment_attempts")
+    amount = models.PositiveIntegerField()
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING, db_index=True)
+    authority = models.CharField(max_length=64, unique=True, null=True, blank=True)
+    ref_id = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    initiated_at = models.DateTimeField(null=True, blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["order", "status"]),
+            models.Index(fields=["order", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"Payment attempt {self.pk} for order {self.order_id}"
+
+
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items", verbose_name="سفارش")
     product = models.ForeignKey(SeriesModel, on_delete=models.CASCADE, related_name="order_items", verbose_name="محصول")

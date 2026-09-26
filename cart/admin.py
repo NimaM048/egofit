@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from django.contrib import admin
 
-from cart.models import DiscountCode, Order, OrderItem, UserDiscountCode
+from cart.models import DiscountCode, Order, OrderItem, OrderPaymentAttempt, UserDiscountCode
 
 
 class OrderItemInline(admin.TabularInline):
@@ -10,10 +10,17 @@ class OrderItemInline(admin.TabularInline):
     extra = 0
 
 
+class OrderPaymentAttemptInline(admin.TabularInline):
+    model = OrderPaymentAttempt
+    extra = 0
+    fields = ("amount", "status", "authority", "ref_id", "created_at", "initiated_at", "paid_at")
+    readonly_fields = fields
+
+
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
     list_display = ("order_number", "user", "status", "is_paid", "total_price", "created_at")
-    inlines = (OrderItemInline,)
+    inlines = (OrderItemInline, OrderPaymentAttemptInline)
     list_filter = ("status", "is_paid", "created_at")
     search_fields = ("order_number", "user__fullname", "user__phone", "authority")
     readonly_fields = ("order_number", "created_at", "payment_attempted_at", "paid_at")

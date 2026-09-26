@@ -16,6 +16,7 @@ from account.models import (
     BodyCircumferenceMeasurement,
     CaliperMeasurement,
     ClientDocument,
+    ClientDocumentPayment,
     ClientMedia,
     CoachRequest,
     CorrectiveExercise,
@@ -441,6 +442,16 @@ class ClientDocumentAdmin(admin.ModelAdmin):
         super().save_model(request, obj, form, change)
         if not change:
             NotificationService.schedule_document_uploaded(obj)
+
+
+@admin.register(ClientDocumentPayment)
+class ClientDocumentPaymentAdmin(admin.ModelAdmin):
+    list_display = ("document", "user", "amount", "status", "authority", "created_at", "paid_at")
+    list_select_related = ("document", "user")
+    list_filter = ("status", "created_at", "paid_at")
+    search_fields = ("document__title", "user__fullname", "user__phone", "authority", "ref_id")
+    readonly_fields = ("created_at", "paid_at", "authority", "ref_id")
+    ordering = ("-created_at",)
 
 
 @admin.register(CoachRequest)

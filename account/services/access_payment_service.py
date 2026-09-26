@@ -87,20 +87,20 @@ class AccessPaymentService:
                 "status": payment_model.Status.INITIATED,
             }
         ).first()
-        if payment is None:
-            payment = payment_model.objects.create(
-                **{
-                    target_field: target,
-                    "user": user,
-                    "amount": target_amount,
-                }
-            )
+        if payment is not None:
+            # Gateway authorities are single-use. A user can leave the
+            # gateway without returning to the callback, so an initiated row
+            # cannot be treated as reusable on the next attempt.
+            payment.status = payment_model.Status.FAILED
+            payment.save(update_fields=["status"])
 
-        if payment.authority:
-            return AccessPaymentInitiation(
-                payment_id=payment.pk,
-                redirect_url=self.provider.build_startpay_url(payment.authority),
-            )
+        payment = payment_model.objects.create(
+            **{
+                target_field: target,
+                "user": user,
+                "amount": target_amount,
+            }
+        )
 
         result = self.provider.request_payment(
             amount=payment.amount,
@@ -136,11 +136,10 @@ class AccessPaymentService:
             return AccessPaymentVerification(payment=None, state="missing")
         if payment.status == payment_model.Status.PAID:
             return AccessPaymentVerification(payment=payment, state="already_paid", ref_id=payment.ref_id)
-        if payment.status != payment_model.Status.INITIATED:
-            return AccessPaymentVerification(payment=payment, state="failed", message="Payment is not active.")
         if status != "OK":
-            payment.status = payment_model.Status.FAILED
-            payment.save(update_fields=["status"])
+            if payment.status != payment_model.Status.FAILED:
+                payment.status = payment_model.Status.FAILED
+                payment.save(update_fields=["status"])
             return AccessPaymentVerification(payment=payment, state="failed")
 
         try:

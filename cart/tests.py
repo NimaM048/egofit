@@ -149,7 +149,7 @@ class CartPaymentFlowTests(TestCase):
         request.user = self.user
         return request
 
-    def test_order_creation_payment_initiation_and_verification_flow_is_idempotent(self):
+    def test_order_payment_can_be_retried_with_a_new_authority(self):
         request = self._request("get", "/")
         cart = Cart(request)
         cart.add(product=self.series, quantity=1)
@@ -159,15 +159,21 @@ class CartPaymentFlowTests(TestCase):
         self.assertEqual(order.total_price, 120000)
         self.assertEqual(order.items.count(), 1)
 
+        authorities = iter(("ABC123", "DEF456"))
+
+        def request_payment(_provider, **kwargs):
+            authority = next(authorities)
+            return PaymentInitiationResult(
+                redirect_url=f"https://pay.example/start/{authority}",
+                authority=authority,
+                raw_response={"Status": 100, "Authority": authority},
+            )
+
         provider = type(
             "Provider",
             (),
             {
-                "request_payment": lambda self, **kwargs: PaymentInitiationResult(
-                    redirect_url="https://pay.example/start/ABC123",
-                    authority="ABC123",
-                    raw_response={"Status": 100, "Authority": "ABC123"},
-                ),
+                "request_payment": request_payment,
                 "verify_payment": lambda self, **kwargs: PaymentVerificationResult(
                     success=True,
                     ref_id="REF-123",
@@ -186,8 +192,8 @@ class CartPaymentFlowTests(TestCase):
 
         second_redirect_url = service.initiate_payment(order=order, callback_url="https://example.test/cart/verify/")
         order.refresh_from_db()
-        self.assertEqual(second_redirect_url, "https://www.zarinpal.com/pg/StartPay/ABC123")
-        self.assertEqual(order.authority, "ABC123")
+        self.assertEqual(second_redirect_url, "https://pay.example/start/DEF456")
+        self.assertEqual(order.authority, "DEF456")
         self.assertEqual(order.status, Order.PaymentStatus.PAYMENT_INITIATED)
 
         result = service.verify_callback(authority="ABC123", status="OK")

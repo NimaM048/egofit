@@ -62,7 +62,7 @@ class AccessPaymentSecurityTests(TestCase):
             price=240000,
         )
 
-    def test_document_initiation_is_idempotent_and_reuses_authority(self):
+    def test_document_initiation_retries_with_a_new_authority(self):
         provider = FakePaymentProvider()
         service = AccessPaymentService(provider=provider)
 
@@ -77,10 +77,27 @@ class AccessPaymentSecurityTests(TestCase):
             callback_url="https://egofit.ir/document/callback/",
         )
 
-        self.assertEqual(provider.request_calls, 1)
-        self.assertEqual(first.payment_id, second.payment_id)
-        self.assertEqual(first.redirect_url, second.redirect_url)
-        self.assertEqual(ClientDocumentPayment.objects.filter(document=self.document).count(), 1)
+        self.assertEqual(provider.request_calls, 2)
+        self.assertNotEqual(first.payment_id, second.payment_id)
+        self.assertNotEqual(first.redirect_url, second.redirect_url)
+        self.assertEqual(ClientDocumentPayment.objects.filter(document=self.document).count(), 2)
+        self.assertEqual(
+            ClientDocumentPayment.objects.get(pk=first.payment_id).status,
+            ClientDocumentPayment.Status.FAILED,
+        )
+        self.assertEqual(
+            ClientDocumentPayment.objects.get(pk=second.payment_id).status,
+            ClientDocumentPayment.Status.INITIATED,
+        )
+
+        # A callback from the first gateway attempt can arrive after a retry;
+        # it must still be verified instead of being discarded as stale.
+        late_callback = service.verify_document(authority="AUTH-1", status="OK")
+        self.assertEqual(late_callback.state, "paid")
+        self.assertEqual(
+            ClientDocumentPayment.objects.get(pk=first.payment_id).status,
+            ClientDocumentPayment.Status.PAID,
+        )
 
     def test_program_callback_is_idempotent_and_verifies_provider_once(self):
         provider = FakePaymentProvider()

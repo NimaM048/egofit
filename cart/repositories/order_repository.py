@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from django.db import transaction
+from django.utils import timezone
 
-from cart.models import Order, OrderItem
+from cart.models import Order, OrderItem, OrderPaymentAttempt
 
 
 class OrderRepository:
@@ -40,6 +40,39 @@ class OrderRepository:
         if lock:
             queryset = queryset.select_for_update()
         return queryset.prefetch_related("items__product").filter(authority=authority).first()
+
+    def create_payment_attempt(self, *, order: Order) -> OrderPaymentAttempt:
+        return OrderPaymentAttempt.objects.create(order=order, amount=order.total_price)
+
+    def get_payment_attempt_by_authority(self, *, authority: str, lock: bool = False):
+        queryset = OrderPaymentAttempt.objects.select_related("order", "order__user")
+        if lock:
+            queryset = queryset.select_for_update()
+        return queryset.filter(authority=authority).first()
+
+    def mark_attempt_initiated(
+        self,
+        *,
+        order: Order,
+        attempt: OrderPaymentAttempt,
+        authority: str,
+    ) -> None:
+        now = timezone.now()
+        attempt.authority = authority
+        attempt.status = OrderPaymentAttempt.Status.INITIATED
+        attempt.initiated_at = now
+        attempt.save(update_fields=["authority", "status", "initiated_at"])
+        order.mark_payment_initiated(authority)
+
+    def mark_attempt_failed(self, *, attempt: OrderPaymentAttempt) -> None:
+        attempt.status = OrderPaymentAttempt.Status.FAILED
+        attempt.save(update_fields=["status"])
+
+    def mark_attempt_paid(self, *, attempt: OrderPaymentAttempt, ref_id: str | None = None) -> None:
+        attempt.status = OrderPaymentAttempt.Status.PAID
+        attempt.ref_id = str(ref_id or attempt.ref_id or "")
+        attempt.paid_at = timezone.now()
+        attempt.save(update_fields=["status", "ref_id", "paid_at"])
 
     def mark_payment_initiated(self, *, order: Order, authority: str) -> None:
         order.mark_payment_initiated(authority)
