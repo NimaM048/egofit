@@ -33,8 +33,7 @@ from api.models import ApiToken
 from api.responses import error, ok
 from api.utils import absolute_file_url, json_value, parse_int, request_data
 from cart.card_models import Cart
-from cart.exceptions import PaymentProviderException, PaymentVerificationException
-from cart.providers.zarinpal_provider import ZarinPalPaymentProvider
+from cart.exceptions import PaymentProviderException
 from cart.models import Order
 from cart.services import PaymentService, apply_discount, build_order_from_cart
 from cart.selectors.order_selector import OrderSelector
@@ -735,25 +734,6 @@ def document_payment(request, pk):
         return ok({"document_id": document.pk, "already_paid": True})
     return ok({"document_id": document.pk, "payment_id": result.payment_id, "redirect_url": result.redirect_url})
 
-    if ClientDocumentPayment.objects.filter(document=document, user=request.user, status=ClientDocumentPayment.Status.PAID).exists():
-        return ok({"document_id": document.pk, "already_paid": True})
-    payment = ClientDocumentPayment.objects.filter(
-        document=document, user=request.user, status=ClientDocumentPayment.Status.INITIATED
-    ).first()
-    if payment is None:
-        payment = ClientDocumentPayment.objects.create(document=document, user=request.user, amount=document.price)
-    result = ZarinPalPaymentProvider().request_payment(
-        amount=payment.amount,
-        callback_url=build_payment_callback_url(request, url_name="api:document_payment_verify"),
-        description=f"دریافت فایل {document.title}",
-        mobile=request.user.phone,
-        email=request.user.email or None,
-    )
-    payment.authority = result.authority
-    payment.status = ClientDocumentPayment.Status.INITIATED
-    payment.save(update_fields=["authority", "status"])
-    return ok({"document_id": document.pk, "payment_id": payment.pk, "redirect_url": result.redirect_url})
-
 
 @api_endpoint
 @api_methods("GET")
@@ -779,31 +759,6 @@ def document_payment_verify(request):
     if result.state not in {"paid", "already_paid"}:
         return error("payment_failed", result.message or "Document payment could not be verified.")
     return ok({"state": result.state, "document_id": result.payment.document_id, "ref_id": result.ref_id})
-
-    payment = ClientDocumentPayment.objects.filter(
-        authority=authority, status=ClientDocumentPayment.Status.INITIATED
-    ).select_related("document", "user").first()
-    if payment is None:
-        return error("not_found", "Document payment was not found.", status=404)
-    if status != "OK":
-        payment.status = ClientDocumentPayment.Status.FAILED
-        payment.save(update_fields=["status"])
-        return ok({"state": "failed", "document_id": payment.document_id})
-    try:
-        result = ZarinPalPaymentProvider().verify_payment(amount=payment.amount, authority=authority)
-    except PaymentVerificationException as exc:
-        payment.status = ClientDocumentPayment.Status.FAILED
-        payment.save(update_fields=["status"])
-        return error("payment_failed", str(exc))
-    if not result.success:
-        payment.status = ClientDocumentPayment.Status.FAILED
-        payment.save(update_fields=["status"])
-        return error("payment_failed", result.message or "Document payment could not be verified.")
-    payment.status = ClientDocumentPayment.Status.PAID
-    payment.ref_id = result.ref_id or ""
-    payment.paid_at = timezone.now()
-    payment.save(update_fields=["status", "ref_id", "paid_at"])
-    return ok({"state": "paid", "document_id": payment.document_id, "ref_id": payment.ref_id})
 
 
 @api_endpoint

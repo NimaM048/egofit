@@ -378,6 +378,8 @@ class ClientDocumentPayment(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        verbose_name = _("پرداخت فایل")
+        verbose_name_plural = _("پرداخت‌های فایل")
         constraints = [
             models.UniqueConstraint(
                 fields=["document", "user"],

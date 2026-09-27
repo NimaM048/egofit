@@ -5,7 +5,9 @@ from secrets import randbelow
 from unittest.mock import patch
 
 from django.http import Http404, HttpResponse
+from django.template.loader import render_to_string
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
+from django.urls import reverse
 
 from cart.card_models import CARD_SESSION_ID, Cart
 from cart.constants import PAYMENT_SESSION_KEY
@@ -98,6 +100,19 @@ class CartViewTests(SimpleTestCase):
         messages_error.assert_called_once()
         verify_mock.assert_not_called()
         render_mock.assert_called_once_with(request, "cart/fail_result.html")
+
+
+class FailResultTemplateTests(TestCase):
+    def test_failed_payment_page_links_back_to_unpaid_order_for_retry(self):
+        html = render_to_string("cart/fail_result.html", {"order": SimpleNamespace(id=7, is_paid=False)})
+
+        self.assertIn(reverse("cart:order_detail", args=[7]), html)
+
+    def test_failed_payment_page_without_order_links_to_cart(self):
+        html = render_to_string("cart/fail_result.html", {})
+
+        self.assertIn(reverse("cart:cart_detail"), html)
+        self.assertNotIn(reverse("cart:order_detail", args=[7]), html)
 
 
 class CartUtilityTests(SimpleTestCase):

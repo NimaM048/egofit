@@ -68,8 +68,7 @@ from account.models import (
     WorkoutProgramExercise,
     WorkoutProgramFeedback,
 )
-from cart.exceptions import PaymentProviderException, PaymentVerificationException
-from cart.providers.zarinpal_provider import ZarinPalPaymentProvider
+from cart.exceptions import PaymentProviderException
 from cart.zarinpal import build_payment_callback_url
 from home.models import SeriesModel
 
@@ -459,9 +458,7 @@ class ClientDocumentPaymentView(UserPortalRequiredMixin, View):
         request.session.save()
         return redirect(result.redirect_url)
 
-        if False:
-            # Legacy reference retained only to keep historical source context inert.
-                description=f"دریافت فایل {document.title}",
+
 class ClientDocumentPaymentVerifyView(View):
     def get(self, request):
         authority = (request.GET.get("Authority") or "").strip()
@@ -476,41 +473,6 @@ class ClientDocumentPaymentVerifyView(View):
         request.session.pop("document_payment_id", None)
         messages.success(request, "پرداخت با موفقیت انجام شد.")
         return redirect("register:profile_document_download", pk=result.payment.document_id)
-
-        payment = ClientDocumentPayment.objects.filter(
-            authority=authority,
-            status=ClientDocumentPayment.Status.INITIATED,
-        ).select_related("document", "user").first()
-        if payment is None:
-            messages.error(request, _("پرداخت فایل پیدا نشد."))
-            return redirect("register:profile_plans")
-        if status != "OK":
-            payment.status = ClientDocumentPayment.Status.FAILED
-            payment.save(update_fields=["status"])
-            messages.error(request, _("پرداخت فایل لغو یا ناموفق بود."))
-            return redirect("register:profile_plans")
-        try:
-            result = ZarinPalPaymentProvider().verify_payment(
-                amount=payment.amount,
-                authority=authority,
-            )
-        except PaymentVerificationException as exc:
-            payment.status = ClientDocumentPayment.Status.FAILED
-            payment.save(update_fields=["status"])
-            messages.error(request, str(exc))
-            return redirect("register:profile_plans")
-        if not result.success:
-            payment.status = ClientDocumentPayment.Status.FAILED
-            payment.save(update_fields=["status"])
-            messages.error(request, result.message or _("پرداخت فایل تایید نشد."))
-            return redirect("register:profile_plans")
-        payment.status = ClientDocumentPayment.Status.PAID
-        payment.ref_id = result.ref_id or ""
-        payment.paid_at = timezone.now()
-        payment.save(update_fields=["status", "ref_id", "paid_at"])
-        request.session.pop("document_payment_id", None)
-        messages.success(request, _("پرداخت با موفقیت انجام شد."))
-        return redirect("register:profile_document_download", pk=payment.document_id)
 
 
 class ClientDocumentDownloadView(UserPortalRequiredMixin, View):
@@ -555,38 +517,6 @@ class WorkoutProgramPaymentView(UserPortalRequiredMixin, View):
         request.session.save()
         return redirect(result.redirect_url)
 
-        payment = WorkoutProgramPayment.objects.filter(
-            program=program,
-            user=request.user,
-            status=WorkoutProgramPayment.Status.INITIATED,
-        ).first()
-        if payment is None:
-            payment = WorkoutProgramPayment.objects.create(
-                program=program,
-                user=request.user,
-                amount=program.price,
-            )
-        try:
-            result = ZarinPalPaymentProvider().request_payment(
-                amount=payment.amount,
-                callback_url=build_payment_callback_url(
-                    request,
-                    url_name="register:profile_workout_program_verify",
-                ),
-                description=f"دسترسی به برنامه {program.title}",
-                mobile=request.user.phone,
-                email=request.user.email or None,
-            )
-        except PaymentProviderException as exc:
-            messages.error(request, str(exc))
-            return redirect("register:profile_workout_programs")
-        payment.authority = result.authority
-        payment.status = WorkoutProgramPayment.Status.INITIATED
-        payment.save(update_fields=["authority", "status"])
-        request.session["workout_program_payment_id"] = payment.pk
-        request.session.save()
-        return redirect(result.redirect_url)
-
 
 class WorkoutProgramPaymentVerifyView(View):
     def get(self, request):
@@ -601,41 +531,6 @@ class WorkoutProgramPaymentVerifyView(View):
             return redirect("register:profile_workout_programs")
         request.session.pop("workout_program_payment_id", None)
         messages.success(request, "پرداخت با موفقیت انجام شد و برنامه فعال شد.")
-        return redirect("register:profile_workout_programs")
-
-        payment = WorkoutProgramPayment.objects.filter(
-            authority=authority,
-            status=WorkoutProgramPayment.Status.INITIATED,
-        ).select_related("program", "user").first()
-        if payment is None:
-            messages.error(request, _("پرداخت برنامه پیدا نشد."))
-            return redirect("register:profile_workout_programs")
-        if status != "OK":
-            payment.status = WorkoutProgramPayment.Status.FAILED
-            payment.save(update_fields=["status"])
-            messages.error(request, _("پرداخت برنامه لغو یا ناموفق بود."))
-            return redirect("register:profile_workout_programs")
-        try:
-            result = ZarinPalPaymentProvider().verify_payment(
-                amount=payment.amount,
-                authority=authority,
-            )
-        except PaymentVerificationException as exc:
-            payment.status = WorkoutProgramPayment.Status.FAILED
-            payment.save(update_fields=["status"])
-            messages.error(request, str(exc))
-            return redirect("register:profile_workout_programs")
-        if not result.success:
-            payment.status = WorkoutProgramPayment.Status.FAILED
-            payment.save(update_fields=["status"])
-            messages.error(request, result.message or _("پرداخت برنامه تایید نشد."))
-            return redirect("register:profile_workout_programs")
-        payment.status = WorkoutProgramPayment.Status.PAID
-        payment.ref_id = result.ref_id or ""
-        payment.paid_at = timezone.now()
-        payment.save(update_fields=["status", "ref_id", "paid_at"])
-        request.session.pop("workout_program_payment_id", None)
-        messages.success(request, _("پرداخت با موفقیت انجام شد و برنامه فعال شد."))
         return redirect("register:profile_workout_programs")
 
 

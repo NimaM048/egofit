@@ -42,6 +42,13 @@ class OrderRepository:
         return queryset.prefetch_related("items__product").filter(authority=authority).first()
 
     def create_payment_attempt(self, *, order: Order) -> OrderPaymentAttempt:
+        # An earlier attempt the user abandoned at the gateway never gets a
+        # callback. Its authority stays verifiable, so a late successful
+        # callback still marks it paid.
+        OrderPaymentAttempt.objects.filter(
+            order=order,
+            status=OrderPaymentAttempt.Status.INITIATED,
+        ).update(status=OrderPaymentAttempt.Status.FAILED)
         return OrderPaymentAttempt.objects.create(order=order, amount=order.total_price)
 
     def get_payment_attempt_by_authority(self, *, authority: str, lock: bool = False):

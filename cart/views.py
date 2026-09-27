@@ -8,6 +8,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from django.views import View
+from django.views.decorators.cache import never_cache
 from django.views.generic import TemplateView
 
 from cart.card_models import Cart
@@ -111,6 +112,7 @@ class ApplyDiscountView(LoginRequiredMixin, View):
         )
 
 
+@never_cache
 @login_required
 def request_payment(request, pk):
     if request.method != "POST":
